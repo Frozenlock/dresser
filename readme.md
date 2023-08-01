@@ -16,7 +16,23 @@ Suggestions welcome!
 
 ## Why Use It?
 
-- Nested maps are awesome; not everything can easily be represented with flat data.
+A limited set of functions (`fetch`, `assoc-at!`, `get-at`, ...) that are guaranteed to work with every implementation.
+
+Any Dresser function you define can be used directly without special ceremony:
+```clojure
+(user-monthly-usage DB "user123") ;=> {:widgets 50, :bandwidth 100}
+```
+... but will automatically reuse a transaction if it has the opportunity:
+
+```clojure
+(db/tx-let [tx DB]
+    [{:keys [widget bandwidth]} (user-monthly-usage tx "user123")
+     invoice1 (widget-invoice! tx "user123" widget)
+     invoice2 (bandwidth-invoice! tx "users123" bandwidth)]
+  (send-invoices! tx [invoice1 invoice2] {:throw-on-error? true}))
+; If sending email fails, the whole transaction is cancelled
+```
+
 - Get started with your project without having to immediately choose your "forever DB".
 - Migrate from one storage backend to another without modifying your code.
 - Stuck with a particular DB you don't really like? Abstract your pain away!
@@ -34,7 +50,7 @@ Surprisingly, it can be faster!
 How? One would expect the wrappers to add a few ms at the very least.
 Indeed, but the IO operations dwarf this additional time.
 
-The speed gains can occur if you decrease the total number of separate transactions, which Dresser makes very easy to do. For example, the MongoDB implementation runs the tests in less than half time when transactions are enabled vs when they are not.
+The speed gains can occur if you decrease the total number of separate transactions, which Dresser makes very easy to do. For example, the MongoDB implementation runs the tests in less than half the time when transactions are enabled vs when they are not.
 
 In other cases, such as with the Codax implementation, Dresser will abstract away the additional complexity of using the "optimal" approach. (Link to Codax fetch/lazy-fetch)
 
