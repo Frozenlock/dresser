@@ -52,7 +52,7 @@ Indeed, but the IO operations dwarf this additional time.
 
 The speed gains can occur if you decrease the total number of separate transactions, which Dresser makes very easy to do. For example, the MongoDB implementation runs the tests in less than half the time when transactions are enabled vs when they are not.
 
-In other cases, such as with the Codax implementation, Dresser will abstract away the additional complexity of using the "optimal" approach. (Link to Codax fetch/lazy-fetch)
+In other cases, such as with the Codax implementation, Dresser will abstract away the additional complexity of using the ["optimal"](https://github.com/Frozenlock/dresser/blob/master/dresser-impl-codax/src/dresser/impl/codax.clj#L85) approach.
 
 ## Usage
 
