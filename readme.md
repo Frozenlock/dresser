@@ -2,14 +2,16 @@
 
 A transactional storage abstraction for Clojure.
 
-<img width="200" align="right" style="border: 2px solid  lightgray; border-radius:15px" src="https://raw.githubusercontent.com/Frozenlock/dresser/master/docs/img/dresser.jpeg">
+<img width="200" align="right" src="https://raw.githubusercontent.com/Frozenlock/dresser/master/docs/img/dresser.jpeg">
 
 - Core: [![Clojars Project](https://img.shields.io/clojars/v/org.clojars.frozenlock/dresser.svg)](https://clojars.org/org.clojars.frozenlock/dresser)
 - Implementations
   - Hashmap (in core)
   - Atom (in core)
-  - [Codax](https://github.com/dscarpetti/codax): [![Clojars Project](https://img.shields.io/clojars/v/org.clojars.frozenlock/dresser-impl-codax.svg)](https://clojars.org/org.clojars.frozenlock/dresser-impl-codax)
-  - MongoDB [![Clojars Project](https://img.shields.io/clojars/v/org.clojars.frozenlock/dresser-impl-mongodb.svg)](https://clojars.org/org.clojars.frozenlock/dresser-impl-mongodb)
+  - [Codax](https://github.com/dscarpetti/codax)
+    [![Clojars Project](https://img.shields.io/clojars/v/org.clojars.frozenlock/dresser-impl-codax.svg)](https://clojars.org/org.clojars.frozenlock/dresser-impl-codax)
+  - MongoDB
+    [![Clojars Project](https://img.shields.io/clojars/v/org.clojars.frozenlock/dresser-impl-mongodb.svg)](https://clojars.org/org.clojars.frozenlock/dresser-impl-mongodb)
 
 
 ## Status: Alpha
