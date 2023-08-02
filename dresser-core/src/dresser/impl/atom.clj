@@ -7,12 +7,12 @@
 ;; We don't use `swap!` to avoid the automatic retries.
 
 (dp/defimpl -transact
-  [dresser f result?]
+  [dresser f {:keys [result?]}]
   (locking (:lock dresser)
     (let [temp-data (db/temp-data dresser)
           source @(:*source dresser)
           source' (-> (db/with-temp-data source temp-data)
-                      (db/transact! #(f %) false))
+                      (db/transact! #(f %) {:result? false}))
           _ (when-not (compare-and-set! (:*source dresser)
                                         source
                                         (db/with-temp-data source' nil))

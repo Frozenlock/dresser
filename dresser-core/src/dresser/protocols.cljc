@@ -26,9 +26,10 @@
   (-all-drawers ^:tx [dresser] "Returns a sequence of all drawers keys")
   (-delete ^:tx ^:w [dresser drawer id] "Deletes the document if it exists. Returns id.")
   (-upsert ^:tx ^:w [dresser drawer data] "Upserts a document with the provided ID and returns it.")
-  (-transact [dresser f result?]
+  (-transact [dresser f {:keys [result?] :as opts}]
              "Evaluates the provided function inside a transaction.
-  If 'result?' is true (default), automatically returns the result
+  `opts`:
+  If `:result?` is true (default), automatically returns the result
   when exiting the transaction. The function should accept dresser as
   an argument.")
   (-temp-data [dresser] "Returns the dresser temporary data (a map).")

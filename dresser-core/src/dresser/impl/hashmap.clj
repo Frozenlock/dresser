@@ -170,7 +170,7 @@
         (db/with-result data))))
 
 (dp/defimpl -transact
-  [dresser f result?]
+  [dresser f {:keys [result?]}]
   (if (:transact dresser)
     (f dresser)
     ;; When not already inside a transaction, add a marker

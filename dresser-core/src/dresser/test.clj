@@ -164,7 +164,7 @@ time and a drawer-object the other half."
                                           (with-meta {:ns ns}))]))
                       (dp/mapify-impls
                        [(dp/impl -transact
-                          [dresser f result?]
+                          [dresser f opts]
                           (if (:transact dresser)
                             ;; Transaction is already open
                             (do
@@ -189,10 +189,10 @@ time and a drawer-object the other half."
                                                     (try
                                                       (:source (f (assoc dresser :transact true :source src-tx)))
                                                       (catch Exception e (reset! *step-count 0) (throw e))))
-                                                  false)
+                                                  {:result? false})
                                   return (assoc dresser :source updated-source)]
                               (reset! *step-count 0)
-                              (if result?
+                              (if (:result? opts)
                                 (db/result return)
                                 (dissoc return :transact)))))
                         (dp/impl -start
@@ -381,14 +381,14 @@ time and a drawer-object the other half."
       ;; Test that we get the expected value OUTSIDE the transaction
       (is (= doc (db/transact! (impl-f) #(db/upsert! % @drawer1 doc))))
       ;; ... Except when we ask to not extract the result
-      (is (db/dresser? (db/transact! (impl-f) #(db/upsert! % @drawer1 doc) false))))
+      (is (db/dresser? (db/transact! (impl-f) #(db/upsert! % @drawer1 doc) {:result? false}))))
 
     (testing "Rollback on exception"
       ;; Exceptions thrown inside a transaction should cause a rollack
       (let [doc {:id "some-id", :str "string"}
             dresser (db/transact! (impl-f)
                                   (fn [dresser] (db/upsert! dresser @drawer1 doc))
-                                  false)] ; <-- standalone operation
+                                  {:result? false})] ; <-- return the dresser object
 
         ; Now make a few changes inside a transaction
         (try

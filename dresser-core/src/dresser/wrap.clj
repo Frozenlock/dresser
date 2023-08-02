@@ -34,7 +34,7 @@
                                (-> (db/temp-data dresser)
                                    (dissoc tx-data-key))))]
     (dp/impl -transact
-      [dresser f result?]
+      [dresser f {:keys [result?] :as opts}]
       (if (:transact dresser)
         (f dresser)
 
@@ -50,7 +50,7 @@
                               (fn [src-tx]
                                 ;; Inside the source transaction (src-tx), do the wrapped transaction.
                                 (:source (f' (assoc dresser :transact true :source src-tx))))
-                              false)
+                              (assoc opts :result? false))
               return (assoc dresser :source updated-source)]
           (if result?
             (db/result return)

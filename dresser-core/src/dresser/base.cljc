@@ -57,10 +57,10 @@
 
 (defn transact!
   {:doc (:doc (meta #'dp/-transact))}
-  ([dresser f] (dp/-transact dresser f true))
-  ([dresser f result?]
+  ([dresser f] (dp/-transact dresser f {:result? true}))
+  ([dresser f {:keys [result?] :as opts}]
    (assert (dresser? dresser) "Transact first argument should be a dresser")
-   (dp/-transact dresser f result?)
+   (dp/-transact dresser f opts)
 
    ;; (if (started? dresser)
    ;;   (-transact dresser f result?)
@@ -106,7 +106,7 @@
                                      :returned ret#})))))
               ~(if-some [result? result?]
                  result?
-                 true)))
+                 {:result? true})))
 
 (defmacro tx-let
   "Similar to `let`, but the first binding is wrapped inside a transaction.
@@ -167,7 +167,7 @@
   Similar to (transact! dresser (fn [tx] body) false)"
   {:style/indent 1}
   [dresser & body]
-  `(transact! ~dresser (fn [tx#] (tx-> tx# ~@body)) false))
+  `(transact! ~dresser (fn [tx#] (tx-> tx# ~@body)) {:result? false}))
 
 
 

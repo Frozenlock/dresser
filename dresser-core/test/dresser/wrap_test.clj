@@ -90,7 +90,7 @@
                                      (is (= 6 (get (db/temp-data tx) tx-data-key))
                                          "tx-data-field should survive across all steps")
                                      tx))
-                                 false)
+                                 {:result? false})
             {:keys [tx-data-key]} (db/temp-data return)]
         (assert tx-data-key)
         (is (nil? (get (db/temp-data return) tx-data-key))

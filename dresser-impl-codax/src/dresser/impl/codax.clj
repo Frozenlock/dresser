@@ -25,7 +25,7 @@
 
 
 (dp/defimpl -transact
-  [dresser f result?]
+  [dresser f {:keys [result?]}]
   (if (:codax dresser)
     (f dresser)
     (let [;; Codax doesn't appear to provide an easy way to extract results

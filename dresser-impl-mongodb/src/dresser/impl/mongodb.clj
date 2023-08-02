@@ -360,7 +360,7 @@
 
 ;; transactionLifetimeLimitSeconds <-- might be useful in the future
 (dp/defimpl -transact
-  [dresser f result?]
+  [dresser f {:keys [result?]}]
   (if (:transact dresser)
     (f dresser)
     ;; When not already inside a transaction:
