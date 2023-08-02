@@ -26,8 +26,8 @@ Any Dresser function you define can be used directly without special ceremony:
 
 ```clojure
 (db/tx-let [tx DB]
-    [{:keys [widget bandwidth]} (user-monthly-usage tx "user123")
-     invoice1 (widget-invoice! tx "user123" widget)
+    [{:keys [widgets bandwidth]} (user-monthly-usage tx "user123")
+     invoice1 (widgets-invoice! tx "user123" widgets)
      invoice2 (bandwidth-invoice! tx "users123" bandwidth)]
   (send-invoices! tx [invoice1 invoice2] {:throw-on-error? true}))
 ; If sending email fails, the whole transaction is cancelled
