@@ -527,6 +527,8 @@ time and a drawer-object the other half."
       (db/tx-> (impl-f)
         (db/upsert-many! (dd/drawer @drawer1) docs)
         (is-> (db/delete! @drawer1 nil) nil?)
+        (is-> (db/delete! @drawer1 :doesnt-exist) (= :doesnt-exist)
+              "Doesn't throw when deleting a non-existing document.")
         (is-> (db/delete! @drawer1 1) (= 1) "Returns id.")
         (is-> (db/delete! (dd/drawer @drawer1) 2) (= 2) "Returns id.")
         (is-> (db/fetch-by-id @drawer1 1) nil?)
