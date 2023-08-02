@@ -268,7 +268,11 @@ time and a drawer-object the other half."
                      "Returns coll.")
                (is-> (db/fetch-by-id @drawer1 1) (= doc1))
                (is-> (db/fetch-by-id @drawer1 2) (= doc2))
-               (is-> (db/fetch-by-id @drawer1 "a") (= doc3)))]
+               (is-> (db/fetch-by-id @drawer1 "a") (= doc3))
+               (testing-> "Overwrites docs"
+                 (db/upsert-many! @drawer1 [{:id 1, :new "value"}])
+                 (is-> (db/fetch-by-id @drawer1 1) (= {:id 1, :new "value"}) "Overwritten")
+                 (is-> (db/fetch-by-id @drawer1 2) (= doc2) "Untouched")))]
       (is (thrown-with-msg?
            clojure.lang.ExceptionInfo
            #"Missing document ID"
