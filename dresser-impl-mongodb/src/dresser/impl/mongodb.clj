@@ -217,8 +217,7 @@
 
 (dp/defimpl -rename-drawer
   [{::keys [db session] :as tx} drawer new-drawer]
-  (rename-in-registry! tx drawer new-drawer)
-  tx)
+  (rename-in-registry! tx drawer new-drawer))
 
 (dp/defimpl -all-drawers
   [{::keys [db session] :as tx}]
