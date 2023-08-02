@@ -21,7 +21,7 @@
     (cond (and already-used? throw-on-reuse?)
           (throw (ex-info "This extension can only be used once" {:extension ext-key}))
 
-          already-used? (init-fn' dresser)
+          already-used? dresser ;(init-fn' dresser)
 
           :else (-> (reduce #(%2 %1) dresser deps) ; apply deps
                     (wrap/build wrap-configs)
@@ -36,7 +36,7 @@
                       "\n  "
                       "The wrapper will only apply itself once, but `init-fn` will always be called"
                       "\n\n  " (:doc (meta #'wrap/build)))
-   :style/indent 1}
+   :style/indent 2}
   [name & fdecl]
   ;; Complex, but it's a copy/past from 'defn'
   (let [doc (if (string? (first fdecl))
@@ -53,7 +53,7 @@
                 fdecl)
         args (first fdecl)
         body (rest fdecl)
-        hash-args (apply hash-map body)]
+        hash-args (first body)]
     ;; Quick typo check
     (let [unkown-keys (-> hash-args
                           (dissoc :deps :wrap-configs :init-fn :throw-on-reuse?)
@@ -68,17 +68,18 @@
        [~'dresser ~@args]
        (build-ext ~'dresser ~(keyword (str *ns*) (str name)) ~hash-args))))
 
-(defext my-ext
-  "Some amazing extension"
-  [abc]
-  :deps []
-  :wrap-configs {})
+(comment
+  (defext my-ext
+      "Some amazing extension"
+    [abc]
+    {:deps         []
+     :wrap-configs {}})
 
-(defext my-ext2 []
-  :deps [my-ext]
-  :wrap-configs {})
+  (defext my-ext2 []
+    {:deps         [my-ext]
+     :wrap-configs {}})
 
-(defext my-ext3 []
-  :deps []
-  :wrap-configs {})
+  (defext my-ext3 []
+    {:deps         []
+     :wrap-configs {}}))
 

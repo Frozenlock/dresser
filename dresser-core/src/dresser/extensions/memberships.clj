@@ -120,17 +120,17 @@
   "Automatically maintains membership relations when deleting a document or
   dropping a drawer."
   []
-  :deps [refs/keep-sync]
-  :wrap-configs
+  {:deps [refs/keep-sync]
+   :wrap-configs
 
-  ;; TODO: only remove if the drawer IDs no longer exist
+   ;; TODO: only remove if the drawer IDs no longer exist
 
 
- (let [wipe! (refs/expand-fn remove-all-member-and-group-references!)]
-    {`dp/-delete {:pre wipe!}
-     `dp/-drop   {:pre (fn [tx drawer]
-                         ;; Might not need to be immediate.
-                         ;; Consider converting to a job in future optimization.
-                         (let [[tx ids] (db/dr (db/all-ids tx drawer))]
-                           (reduce (fn [tx' id] (wipe! tx' drawer id))
-                                   tx ids)))}}))
+   (let [wipe! (refs/expand-fn remove-all-member-and-group-references!)]
+     {`dp/-delete {:pre wipe!}
+      `dp/-drop   {:pre (fn [tx drawer]
+                          ;; Might not need to be immediate.
+                          ;; Consider converting to a job in future optimization.
+                          (let [[tx ids] (db/dr (db/all-ids tx drawer))]
+                            (reduce (fn [tx' id] (wipe! tx' drawer id))
+                                    tx ids)))}})})

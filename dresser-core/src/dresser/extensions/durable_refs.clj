@@ -227,14 +227,14 @@
 
 (ext/defext keep-sync
   []
-  :init-fn #(db/with-system-drawers % [registry key->ids])
-  :wrap-configs
-  {`dp/-rename-drawer {:wrap (fn [method]
-                               (fn [tx drawer new-drawer]
-                                 (-> tx
-                                     (rename-drawer-in-registry! drawer new-drawer)
-                                     (method drawer new-drawer))))}
-   `dp/-drop          {:closing (fn [tx drawer]
+  {:init-fn #(db/with-system-drawers % [registry key->ids])
+   :wrap-configs
+   {`dp/-rename-drawer {:wrap (fn [method]
+                                (fn [tx drawer new-drawer]
                                   (-> tx
-                                      (drop-drawer! drawer)
-                                      (db/with-result drawer)))}})
+                                      (rename-drawer-in-registry! drawer new-drawer)
+                                      (method drawer new-drawer))))}
+    `dp/-drop          {:closing (fn [tx drawer]
+                                   (-> tx
+                                       (drop-drawer! drawer)
+                                       (db/with-result drawer)))}}})

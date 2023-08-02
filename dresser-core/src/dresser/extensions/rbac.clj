@@ -271,10 +271,10 @@
   functions should probably be used on a dresser that is not yet
   wrapped in this extension."
   [member-ref]
-  :deps [mbr/keep-sync]
-  ;:throw-on-reuse? true
-  :wrap-configs
-  (into {} (for [sym dp/dresser-symbols
-                 :let [wrap (permission-wrapper member-ref sym)]
-                 :when wrap]
-             [sym {:wrap wrap}])))
+  {:deps [mbr/keep-sync]
+   ;:throw-on-reuse? true
+   :wrap-configs
+   (into {} (for [sym dp/dresser-symbols
+                  :let [wrap (permission-wrapper member-ref sym)]
+                  :when wrap]
+              [sym {:wrap wrap}]))})

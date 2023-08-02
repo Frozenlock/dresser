@@ -69,24 +69,24 @@
 (ext/defext keep-sync
   "Children documents are automatically deleted"
   []
-  :deps [refs/keep-sync]
-  :wrap-configs
-  (let [clean! (fn [tx drawer id]
-                 (db/tx-let [tx tx]
-                     [doc-ref (refs/ref tx drawer id)
-                      _ (when doc-ref (delete-children! tx doc-ref))
-                      _ (when doc-ref (remove-parent! tx doc-ref))]
-                   tx))]
-    ;; :pre must be used, as :wrap could be modified by future
-    ;; wrappers and prevent the deletion.
-    {`dp/-delete {:wrap (fn [method]
-                          (fn [tx drawer id]
-                            (-> tx
-                                (clean! drawer id)
-                                (method drawer id))))}
-     `dp/-drop   {:wrap (fn [method]
-                          (fn [tx drawer]
-                            (-> (let [[tx ids] (db/dr (db/all-ids tx drawer))]
-                                  (reduce (fn [tx' id] (clean! tx' drawer id))
-                                          tx ids))
-                                (method drawer))))}}))
+  {:deps [refs/keep-sync]
+   :wrap-configs
+   (let [clean! (fn [tx drawer id]
+                  (db/tx-let [tx tx]
+                             [doc-ref (refs/ref tx drawer id)
+                              _ (when doc-ref (delete-children! tx doc-ref))
+                              _ (when doc-ref (remove-parent! tx doc-ref))]
+                             tx))]
+     ;; :pre must be used, as :wrap could be modified by future
+     ;; wrappers and prevent the deletion.
+     {`dp/-delete {:wrap (fn [method]
+                           (fn [tx drawer id]
+                             (-> tx
+                                 (clean! drawer id)
+                                 (method drawer id))))}
+      `dp/-drop   {:wrap (fn [method]
+                           (fn [tx drawer]
+                             (-> (let [[tx ids] (db/dr (db/all-ids tx drawer))]
+                                   (reduce (fn [tx' id] (clean! tx' drawer id))
+                                           tx ids))
+                                 (method drawer))))}})})
