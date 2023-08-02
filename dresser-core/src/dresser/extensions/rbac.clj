@@ -132,7 +132,7 @@
               `dp/-get-at             :read
               `dp/-has-drawer?        -never
               `dp/-replace            :write
-              `dp/-upsert-all         -never
+              `dp/-upsert-many        -never
               `dp/-dresser-id         -always
               `dp/-rename-drawer      -never
               `dp/-drawer-id          -always

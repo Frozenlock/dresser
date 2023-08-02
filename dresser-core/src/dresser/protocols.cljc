@@ -25,7 +25,7 @@
           "Fetches documents from drawer.")
   (-all-drawers ^:tx [dresser] "Returns a sequence of all drawers keys")
   (-delete ^:tx ^:w [dresser drawer id] "Deletes the document if it exists. Returns id.")
-  (-upsert ^:tx ^:w [dresser drawer data] "Upserts a document with the provided ID and returns it.")
+  (-upsert ^:tx ^:w [dresser drawer data] "Upserts a document containing `:id` and returns it.")
   (-transact [dresser f {:keys [result?] :as opts}]
              "Evaluates the provided function inside a transaction.
   `opts`:
@@ -57,7 +57,8 @@ or they can be constructed using the `DresserFundamental` methods. See
   (-gen-id ^:tx ^:w [dresser drawer] "Generates an ID for a document in the given drawer.")
   (-get-at ^:tx [dresser drawer id ks] "Similar to `clojure.core/get-in`, but for a drawer.")
   (-replace ^:tx ^:w [dresser drawer id data] "Replaces the document data. Returns the new document.")
-  (-upsert-all ^:tx ^:w [dresser drawer docs] "Insert all the documents. Returns documents")
+  (-upsert-many ^:tx ^:w [dresser drawer docs]
+                "Insert many documents, each containing an `:id`. Returns documents")
   (-dresser-id ^:tx [dresser] "Returns the dresser ID")
   (-rename-drawer ^:tx ^:w [dresser drawer new-drawer] "Returns new-drawer.")
   (-has-drawer? ^:tx [dresser drawer] "Returns true if the dresser has the drawer."))

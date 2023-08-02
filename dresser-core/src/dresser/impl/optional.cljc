@@ -63,7 +63,7 @@
                         :where where})
       (db/update-result count)))
 
-(dp/defimpl -upsert-all
+(dp/defimpl -upsert-many
   [tx drawer docs]
   (-> (reduce (fn [tx data]
                 (db/upsert! tx drawer data))
@@ -110,7 +110,7 @@
   (db/tx-let [tx dresser]
       [;; fetch all the documents
        docs (db/fetch tx drawer {})
-       _ (db/upsert-all! tx new-drawer docs)
+       _ (db/upsert-many! tx new-drawer docs)
        _ (db/drop! tx drawer)]
     (db/with-result tx new-drawer)))
 
@@ -134,4 +134,4 @@
     -rename-drawer
     -replace
     -update-at
-    -upsert-all]))
+    -upsert-many]))

@@ -258,13 +258,13 @@ time and a drawer-object the other half."
     ;;             (= [m1 m2])))))
     ))
 
-(defn test--upsert-all
+(defn test--upsert-many
   [impl-f]
   (testing "Upsert all"
     (db/tx-let [tx (impl-f)]
         [[doc1 doc2 doc3 :as docs] [{:id 1, :a 1}, {:id 2, :b 2}, {:id "a", :c 3}]
          _ (-> tx
-               (is-> (db/upsert-all! @drawer1 docs) (= docs)
+               (is-> (db/upsert-many! @drawer1 docs) (= docs)
                      "Returns coll.")
                (is-> (db/fetch-by-id @drawer1 1) (= doc1))
                (is-> (db/fetch-by-id @drawer1 2) (= doc2))
@@ -272,7 +272,7 @@ time and a drawer-object the other half."
       (is (thrown-with-msg?
            clojure.lang.ExceptionInfo
            #"Missing document ID"
-           (db/upsert-all! tx @drawer1 {:a 1 :b "String"})))
+           (db/upsert-many! tx @drawer1 {:a 1 :b "String"})))
       tx)))
 
 
@@ -286,7 +286,7 @@ time and a drawer-object the other half."
                          {:id 4, :sort {:a 3} :r (rand)}]
           docs [d1 d2 d3 d4]]
       (db/tx-> (impl-f)
-        (db/upsert-all! @drawer1 (sort-by :r docs))
+        (db/upsert-many! @drawer1 (sort-by :r docs))
         ;tx
         (testing-> "- Where"
           (is-> (db/fetch @drawer1 {:where {:1 1}}) (u= [d1 d2 d3]))
@@ -326,7 +326,7 @@ time and a drawer-object the other half."
       (testing " - Sort"
         (db/tx-> (impl-f)
           ;; No randomness, insert by ID order
-          (db/upsert-all! @drawer1 (sort-by :id docs))
+          (db/upsert-many! @drawer1 (sort-by :id docs))
           ;; Simple sort
           (is-> (db/fetch @drawer1 {:sort [[[:id] :asc]]})
                 (= [d1 d2 d3 d4]))
@@ -349,7 +349,7 @@ time and a drawer-object the other half."
 
       (testing " - Skip"
         (db/tx-let [tx (impl-f)]
-            [_ (db/upsert-all! tx @drawer1 docs)
+            [_ (db/upsert-many! tx @drawer1 docs)
              f1 (db/fetch tx @drawer1 {:limit 2})
              ids1 (set (map :id f1))
              f2 (db/fetch tx @drawer1 {:limit 2, :skip 2})
@@ -513,7 +513,7 @@ time and a drawer-object the other half."
   (testing "All-ids"
     (let [docs [{:id 1} {:id 2} {:id 3}]]
       (db/tx-> (impl-f)
-        (db/upsert-all! @drawer1 docs)
+        (db/upsert-many! @drawer1 docs)
         (is-> (db/all-ids @drawer1) (= (map :id docs)))))))
 
 (defn test--delete
@@ -521,7 +521,7 @@ time and a drawer-object the other half."
   (testing "Delete"
     (let [[doc1 :as docs] [{:id 1} {:id 2} {:id 3}]]
       (db/tx-> (impl-f)
-        (db/upsert-all! (dd/drawer @drawer1) docs)
+        (db/upsert-many! (dd/drawer @drawer1) docs)
         (is-> (db/delete! @drawer1 nil) nil?)
         (is-> (db/delete! @drawer1 1) (= 1) "Returns id.")
         (is-> (db/delete! (dd/drawer @drawer1) 2) (= 2) "Returns id.")
@@ -592,7 +592,7 @@ time and a drawer-object the other half."
           docs (for [i (range 1000)]
                  {:id i})
           dresser (db/raw-> (impl-f)
-                    (db/upsert-all! @drawer1 docs))]
+                    (db/upsert-many! @drawer1 docs))]
       ;; If the transaction was closed before the seq is realized,
       ;; this should throw an exception.
       (is (= qty (count (db/fetch dresser @drawer1 {})))))))
@@ -620,7 +620,7 @@ time and a drawer-object the other half."
   (test--upsert-&-fetch impl-f)
   (test--transact impl-f)
   (test--replace impl-f)
-  (test--upsert-all impl-f)
+  (test--upsert-many impl-f)
   (test--fetch impl-f)
   (test--add-&-fetch-by-id impl-f)
   (test--replace impl-f)

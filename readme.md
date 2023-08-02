@@ -1,6 +1,6 @@
 # Dresser
 
-A transactional storage abstraction layer for Clojure.
+A transactional storage abstraction for Clojure.
 
 - Core: [![Clojars Project](https://img.shields.io/clojars/v/org.clojars.frozenlock/dresser.svg)](https://clojars.org/org.clojars.frozenlock/dresser)
 - Implementations
@@ -289,7 +289,7 @@ Unless you need some async operations, it's highly suggested to use an immutable
 
 Dresser was built with the idea that you should be able to get up and running quickly and then optimize when necessary. As such, many of the methods are optional. If there are not provided, they will fallback on a combination of fundamental methods.
 
-For example, `db/upsert-all!` will default to calling `db/upsert!` on every document individually. It's likely slower than using a method to insert many documents at once, but it means that your code will still work even if you don't implement this method. Later on, if you feel the need for increased speed, you can define a more specialized implmentation of `db/upsert-all!`.
+For example, `db/upsert-many!` will default to calling `db/upsert!` on every document individually. It's likely slower than using a method to insert many documents at once, but it means that your code will still work even if you don't implement this method. Later on, if you feel the need for increased speed, you can define a more specialized implmentation of `db/upsert-all!`.
 
 Even the base methods can be implemented using shortcuts.
 `db/fetch` is one of the most complex methods because of its various query operations.
