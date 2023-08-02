@@ -55,7 +55,7 @@
   (update-temp-data dresser assoc :result result))
 
 
-(defn transact
+(defn transact!
   {:doc (:doc (meta #'dp/-transact))}
   ([dresser f] (dp/-transact dresser f true))
   ([dresser f result?]
@@ -95,18 +95,18 @@
   Defaults to extracting the result when leaving the transaction.
   To return the updated dresser instead, supply `:result?` as false."
   [[tx-name dresser & [{:keys [result?]}]] & body]
-  `(transact ~dresser
-             (fn [tx#]
-               (let [~tx-name tx#
-                     ret# (do ~@body)]
-                 (if (dresser? ret#)
-                   ret#
-                   (throw (ex-info "Value returned by body must be a dresser"
-                                   {:body     (quote ~body)
-                                    :returned ret#})))))
-             ~(if-some [result? result?]
-                result?
-                true)))
+  `(transact! ~dresser
+              (fn [tx#]
+                (let [~tx-name tx#
+                      ret# (do ~@body)]
+                  (if (dresser? ret#)
+                    ret#
+                    (throw (ex-info "Value returned by body must be a dresser"
+                                    {:body     (quote ~body)
+                                     :returned ret#})))))
+              ~(if-some [result? result?]
+                 result?
+                 true)))
 
 (defmacro tx-let
   "Similar to `let`, but the first binding is wrapped inside a transaction.
@@ -152,22 +152,22 @@
 (defmacro tx->
   {:style/indent 1}
   [dresser & body]
-  `(transact ~dresser
-             (fn [tx#]
-               (let [ret# (-> tx#
-                              ~@body)]
-                 (if (dresser? ret#)
-                   ret#
-                   (throw (ex-info "Value returned by body must be a dresser"
-                                   {:body     (quote ~body)
-                                    :returned ret#})))))))
+  `(transact! ~dresser
+              (fn [tx#]
+                (let [ret# (-> tx#
+                               ~@body)]
+                  (if (dresser? ret#)
+                    ret#
+                    (throw (ex-info "Value returned by body must be a dresser"
+                                    {:body     (quote ~body)
+                                     :returned ret#})))))))
 
 (defmacro raw->
   "Same as `tx->`, but doesn't return the result when exiting the transaction.
-  Similar to (transact dresser (fn [tx] body) false)"
+  Similar to (transact! dresser (fn [tx] body) false)"
   {:style/indent 1}
   [dresser & body]
-  `(transact ~dresser (fn [tx#] (tx-> tx# ~@body)) false))
+  `(transact! ~dresser (fn [tx#] (tx-> tx# ~@body)) false))
 
 
 
@@ -194,9 +194,9 @@
                      tx-note)
                {:arglists '~(:arglists method-meta)}
                [~'dresser & ~'args]
-               (transact ~'dresser
-                         (fn [~'tx]
-                           (apply ~method-symbol ~'tx ~'args))))))))
+               (transact! ~'dresser
+                          (fn [~'tx]
+                            (apply ~method-symbol ~'tx ~'args))))))))
 
 
 (wrap-dresser-tx-methods)

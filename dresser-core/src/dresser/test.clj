@@ -76,10 +76,10 @@ time and a drawer-object the other half."
             (let [e# (ex-cause tx-e#)
                   m# (.getMessage e#)]
               (if (re-find ~re m#)
-                (t/do-report {:type :pass, :message ~msg,
-                         :expected '~form, :actual e#})
-                (t/do-report {:type :fail, :message ~msg,
-                         :expected '~form, :actual e#})))
+                (t/do-report {:type     :pass,  :message ~msg,
+                              :expected '~form, :actual  e#})
+                (t/do-report {:type     :fail,  :message ~msg,
+                              :expected '~form, :actual  e#})))
             tx-e#))))
 
 (defmacro is->
@@ -156,12 +156,12 @@ time and a drawer-object the other half."
                                      :when tx
                                      :let [m (resolve sym)]]
                                  [sym (-> (fn [dresser & args]
-                                          (db/transact
-                                           dresser
-                                           (fn [wrapper-tx]
-                                             (update wrapper-tx :source
-                                                     #(apply m % args)))))
-                                        (with-meta {:ns ns}))]))
+                                            (db/transact!
+                                             dresser
+                                             (fn [wrapper-tx]
+                                               (update wrapper-tx :source
+                                                       #(apply m % args)))))
+                                          (with-meta {:ns ns}))]))
                       (dp/mapify-impls
                        [(dp/impl -transact
                           [dresser f result?]
@@ -183,7 +183,7 @@ time and a drawer-object the other half."
                                 (catch Exception e (reset! *step-count (:step dresser)) (throw e))))
 
                             ;; Transaction is not yet open
-                            (let [updated-source (db/transact
+                            (let [updated-source (db/transact!
                                                   (:source dresser)
                                                   (fn [src-tx]
                                                     (try
@@ -319,7 +319,7 @@ time and a drawer-object the other half."
 
         (testing-> "- Limit"
           (is-> (-> (db/fetch @drawer1 {:limit 2
-                                       :where {:1 1}})
+                                        :where {:1 1}})
                     (db/update-result count))
                 (= 2))))
 
@@ -336,15 +336,15 @@ time and a drawer-object the other half."
                     (= [d4 d3 d2 d1])))
           ;; Sort by multiple values
           (is-> (db/fetch @drawer1 {:sort [[[:sort :a] :asc]
-                                          [[:sort :b] :desc]]})
+                                           [[:sort :b] :desc]]})
                 (= [d2 d1 d3 d4]))
           ;; Make sure the sorting occurs BEFORE the limit
           (testing-> " sort/limit eval order"
             (is-> (db/fetch @drawer1 {:limit 1
-                                     :sort  [[[:id] :desc]]})
+                                      :sort  [[[:id] :desc]]})
                   (= [d4]))
             (is-> (db/fetch @drawer1 {:limit 1
-                                     :sort  [[[:id] :asc]]})
+                                      :sort  [[[:id] :asc]]})
                   (= [d1])))))
 
       (testing " - Skip"
@@ -379,16 +379,16 @@ time and a drawer-object the other half."
   (testing "Transact"
     (let [doc {:id :some-id}]
       ;; Test that we get the expected value OUTSIDE the transaction
-      (is (= doc (db/transact (impl-f) #(db/upsert! % @drawer1 doc))))
+      (is (= doc (db/transact! (impl-f) #(db/upsert! % @drawer1 doc))))
       ;; ... Except when we ask to not extract the result
-      (is (db/dresser? (db/transact (impl-f) #(db/upsert! % @drawer1 doc) false))))
+      (is (db/dresser? (db/transact! (impl-f) #(db/upsert! % @drawer1 doc) false))))
 
     (testing "Rollback on exception"
       ;; Exceptions thrown inside a transaction should cause a rollack
       (let [doc {:id "some-id", :str "string"}
-            dresser (db/transact (impl-f)
-                                 (fn [dresser] (db/upsert! dresser @drawer1 doc))
-                                 false)] ; <-- standalone operation
+            dresser (db/transact! (impl-f)
+                                  (fn [dresser] (db/upsert! dresser @drawer1 doc))
+                                  false)] ; <-- standalone operation
 
         ; Now make a few changes inside a transaction
         (try
@@ -601,14 +601,14 @@ time and a drawer-object the other half."
   [impl-f]
   (time
    ;; Takes ~6.5s for Codax and ~45s(!!!) for MongoDB
-    (testing "Transactions don't blow up the stack"
-      (let [add-doc! (fn [dresser idx]
-                       (db/with-tx [tx dresser]
-                         (db/upsert! tx @drawer1 {:id idx})))]
-        (db/with-tx [tx (impl-f)]
-          (reduce (fn [tx' idx]
-                    (add-doc! tx' idx))
-                  tx (range 100000)))))))
+   (testing "Transactions don't blow up the stack"
+     (let [add-doc! (fn [dresser idx]
+                      (db/with-tx [tx dresser]
+                        (db/upsert! tx @drawer1 {:id idx})))]
+       (db/with-tx [tx (impl-f)]
+         (reduce (fn [tx' idx]
+                   (add-doc! tx' idx))
+                 tx (range 100000)))))))
 
 (defn test-impl
   [impl-f]

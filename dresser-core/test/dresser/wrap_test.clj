@@ -81,16 +81,16 @@
                                                  ;; Make the key available outside the wrapper layer
                                                  (db/update-temp-data assoc :tx-data-key tx-data-key)))))
                                 :post+ count-steps}}))]
-      (let [return (db/transact (wrap-fn (dt/no-tx-reuse (dt/sequential-id (hm/build))))
-                                (fn [tx]
-                                  (let [tx (db/add! tx :docs {:v "doc1"})
-                                        [tx id] (db/dr (db/add! tx :docs {:v "doc1"}))
-                                        _ (is (= 2 id))
-                                        {:keys [tx-data-key]} (db/temp-data tx)]
-                                    (is (= 6 (get (db/temp-data tx) tx-data-key))
-                                        "tx-data-field should survive across all steps")
-                                    tx))
-                                false)
+      (let [return (db/transact! (wrap-fn (dt/no-tx-reuse (dt/sequential-id (hm/build))))
+                                 (fn [tx]
+                                   (let [tx (db/add! tx :docs {:v "doc1"})
+                                         [tx id] (db/dr (db/add! tx :docs {:v "doc1"}))
+                                         _ (is (= 2 id))
+                                         {:keys [tx-data-key]} (db/temp-data tx)]
+                                     (is (= 6 (get (db/temp-data tx) tx-data-key))
+                                         "tx-data-field should survive across all steps")
+                                     tx))
+                                 false)
             {:keys [tx-data-key]} (db/temp-data return)]
         (assert tx-data-key)
         (is (nil? (get (db/temp-data return) tx-data-key))

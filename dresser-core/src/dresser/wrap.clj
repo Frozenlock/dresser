@@ -45,7 +45,7 @@
                        (dissoc-tx-data)))
 
               ;; Evaluate everything inside the source transaction.
-              updated-source (db/transact
+              updated-source (db/transact!
                               (:source dresser)
                               (fn [src-tx]
                                 ;; Inside the source transaction (src-tx), do the wrapped transaction.

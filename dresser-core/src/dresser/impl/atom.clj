@@ -12,7 +12,7 @@
     (let [temp-data (db/temp-data dresser)
           source @(:*source dresser)
           source' (-> (db/with-temp-data source temp-data)
-                      (db/transact #(f %) false))
+                      (db/transact! #(f %) false))
           _ (when-not (compare-and-set! (:*source dresser)
                                         source
                                         (db/with-temp-data source' nil))
