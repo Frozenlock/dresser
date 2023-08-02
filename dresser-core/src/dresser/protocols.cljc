@@ -18,6 +18,8 @@
               (into {} [~@(for [[m args] method->cfgs]
                             `[(symbol (resolve '~m)) '~args])]))))))
 
+;; metadata: :tx is a transaction method, :w is a write method.
+
 (defpro DresserFundamental
   :extend-via-metadata true
   ;; --- Fundamental methods ---
@@ -50,7 +52,8 @@ or they can be constructed using the `DresserFundamental` methods. See
               "Similar to `clojure.core/update-in`. Returns the value that was updated-in.")
   (-add ^:tx ^:w [dresser drawer data] "Adds a document (map) and returns its ID.")
   (-all-ids ^:tx [dresser drawer] "Returns a sequence of all document IDs from this drawer.")
-  (-assoc-at ^:tx ^:w [dresser drawer id ks data] "Similar to `clojure.core/assoc-in`, but for a drawer. Returns data.")
+  (-assoc-at ^:tx ^:w [dresser drawer id ks data]
+             "Similar to `clojure.core/assoc-in`, but for a drawer. Returns data.")
   (-dissoc-at ^:tx ^:w [dresser drawer id ks dissoc-ks]
               "Dissoc the dissoc-keys from the value at located at ks. Returns nil.")
   (-drop ^:tx ^:w [dresser drawer] "Removes the drawer.")
