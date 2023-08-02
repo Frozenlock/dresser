@@ -579,11 +579,10 @@ time and a drawer-object the other half."
   (testing "Immutable temp data"
     (let  [dresser (impl-f)
            initial-temp-data (db/temp-data dresser)]
-      ;; Complete transaction, exit by returning result.
       (is (= {:data 1234}
              (db/temp-data (db/with-temp-data dresser {:data 1234}))))
       ;; Use the initial dresser. Its temp-data should not have been
-      ;; modified by the previous transaction.
+      ;; modified by the previous action.
       (is (= initial-temp-data (db/temp-data dresser))))))
 
 (defn test--lazyness
