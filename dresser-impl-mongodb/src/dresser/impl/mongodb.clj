@@ -358,6 +358,26 @@
   [{::keys [db session] :as dresser} drawer data]
   (upsert dresser drawer data))
 
+(defn upsert-many
+  [{::keys [db session] :as dresser} drawer docs]
+  (mc/bulk-write db
+                 (drawer->coll [db session] drawer :upsert)
+                 (for [doc docs
+                       :let [document-id (:id doc)
+                             _ (when-not document-id
+                                 (throw (ex-info "Missing document ID" {})))
+                             encoded (-> (id->mid doc)
+                                         (encode))]]
+                   [:replace-one {:filter      (select-keys encoded ["_id"])
+                                  :replacement encoded
+                                  :upsert?     true}])
+                 {:session session})
+  (db/with-result dresser docs))
+
+(dp/defimpl -upsert-many
+  [{::keys [db session] :as dresser} drawer docs]
+  (upsert-many dresser drawer docs))
+
 ;; transactionLifetimeLimitSeconds <-- might be useful in the future
 (dp/defimpl -transact
   [dresser f {:keys [result?]}]
@@ -406,6 +426,7 @@
     -temp-data
     -transact
     -upsert
+    -upsert-many
     -with-temp-data]))
 
 
