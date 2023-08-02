@@ -12,6 +12,10 @@
             [mongo-driver-3.collection :as mc]
             [dresser.impl.test-utils :as tu]))
 
+;; TODO: `upsert-all!` for a mass insert.  Also consider 'batching' or
+;; parallelizing operations. The latter might be simpler and can be
+;; applied to all methods.
+
 (defn- qualified-ident-name
   "Returns the qualified name when possible, otherwise just the name."
   [x]
