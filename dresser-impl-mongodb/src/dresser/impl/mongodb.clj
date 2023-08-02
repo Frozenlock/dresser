@@ -6,11 +6,11 @@
             [dresser.base :as db]
             [dresser.drawer :as dd]
             [dresser.impl.optional :as opt]
+            [dresser.impl.test-utils :as tu]
             [dresser.protocols :as dp]
             [dresser.test :as dt]
             [mongo-driver-3.client :as mcl]
-            [mongo-driver-3.collection :as mc]
-            [dresser.impl.test-utils :as tu]))
+            [mongo-driver-3.collection :as mc]))
 
 ;; TODO: `upsert-all!` for a mass insert.  Also consider 'batching' or
 ;; parallelizing operations. The latter might be simpler and can be
