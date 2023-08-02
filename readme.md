@@ -2,6 +2,8 @@
 
 A transactional storage abstraction for Clojure.
 
+<img width="200" align="right" style="border: 2px solid  lightgray; border-radius:15px" src="https://raw.githubusercontent.com/Frozenlock/dresser/master/docs/img/dresser.jpeg">
+
 - Core: [![Clojars Project](https://img.shields.io/clojars/v/org.clojars.frozenlock/dresser.svg)](https://clojars.org/org.clojars.frozenlock/dresser)
 - Implementations
   - Hashmap (in core)
