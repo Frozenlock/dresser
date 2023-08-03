@@ -100,16 +100,6 @@
 (def -always ::always)
 (def -never ::never)
 
-;; Even if the methods can be composed of other methods, :pre and
-;; :post calls use the pre-wrapped (unprotected) methods.
-;;
-;; For example, `replace` might be implemented with `delete` and
-;; `upsert`. The permission check will only occur on the wrapped
-;; `replace` method, while `delete` and `upsert` will be called
-;; without any check. Consequently, only a :write permission will be
-;; necessary, even if the other methods would require :delete and :add
-;; if used directly.
-
 (def method->permission
   (let [m->p {`dp/-fetch       :read
               `dp/-all-drawers -never
