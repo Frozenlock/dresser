@@ -25,7 +25,7 @@ Suggestions welcome!
 
 Functions to fetch and update (`fetch`, `assoc-at!`, `get-at`, ...) that are guaranteed to work with every implementation.
 
-- Store nested maps without normalization.
+- Store *and query* nested maps without normalization.
 - Swap implementations without code modification.
 - Easy tests and debug with in-memory dressers.
 
@@ -126,7 +126,7 @@ Taking our previous users example, let's find the youngest and oldest users and 
 
 (defn remove-youngest-and-oldest!
   [my-db]
-  (db/transact
+  (db/transact!
    my-db
    ;; Everything inside this function is a single transaction.
    (fn [tx]
@@ -155,7 +155,7 @@ Taking our previous users example, let's find the youngest and oldest users and 
                             :youngest youngest})))))
 
 ;; Time to try our new function. When not inside a transaction, the
-;; result should be automatically extracted.
+;; result will be extracted.
 
 (remove-youngest-and-oldest! my-db)
 ;=> {:oldest   {:name "Martin",
@@ -180,6 +180,14 @@ Taking our previous users example, let's find the youngest and oldest users and 
 And you know what? The function we just defined is automatically dresser-compatible.
 This means that if used inside an open transaction, it will use it instead of starting a new one!
 
+```clojure
+(db/tx-> my-db                  ;; Everything occurs inside a single transaction
+  (remove-youngest-and-oldest!) ;; Remove Alice and Felicia
+  (remove-youngest-and-oldest!) ;; Remove Bob
+  (db/fetch :users {:only [:name :age]}))
+;=> ()
+```
+
 ### Macros and Shorthands
 
 Let's be honest here... handling the transaction was kind of a pain.
@@ -191,7 +199,7 @@ There are many tools to make our lives easier. A few are introduced below, in or
 
 (defn remove-youngest-and-oldest!
   [my-db]
-  (db/transact
+  (db/transact!
    my-db
    (fn [tx]
      (let [tx2 (db/fetch-one tx :users {:sort [[[:age] :asc]]})
@@ -213,7 +221,7 @@ There are many tools to make our lives easier. A few are introduced below, in or
 
 (defn remove-youngest-and-oldest!
   [my-db]
-  (db/transact
+  (db/transact!
    my-db
    (fn [tx]
      (let [[tx2 youngest] (db/dr (db/fetch-one tx :users {:sort [[[:age] :asc]]})) ; <---
@@ -224,7 +232,7 @@ There are many tools to make our lives easier. A few are introduced below, in or
        (db/with-result tx4 {:oldest   oldest
                             :youngest youngest})))))
 
-;; Having to use `db/transact` and putting everything in a function
+;; Having to use `db/transact!` and putting everything in a function
 ;; can be hidden with the macro `db/with-tx`.
 
 (defn remove-youngest-and-oldest!
@@ -282,7 +290,7 @@ If you just want to get started quickly, your implementation can fetch all the d
 ```clojure
 (defn fetch
   [tx drawer only limit where sort-config skip]
-  (let [all-docs (mc/find db drawer {})] ; <--- fetch all documents
+  (let [all-docs (mongo-driver-3.client/find db drawer {})] ; <--- fetch all documents
     (db/with-result tx
       (hm/fetch-from-docs all-docs only limit where sort-config skip))))
 ```
