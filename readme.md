@@ -2,7 +2,7 @@
 
 <img width="200" align="left" src="https://raw.githubusercontent.com/Frozenlock/dresser/master/docs/img/dresser.jpeg">
 
-A transactional storage abstraction for Clojure.
+A transactional storage abstraction for Clojure
 
 #### Core
 [![Clojars Project](https://img.shields.io/clojars/v/org.clojars.frozenlock/dresser.svg)](https://clojars.org/org.clojars.frozenlock/dresser)
@@ -16,50 +16,27 @@ Suggestions welcome!
 | Implementation                               | Dependency                                                                                                                                                              |
 |----------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Hashmap                                      | Core                                                                                                                                                                    |
-| Atom                                        | Core                                                                                                                                                                    |
+| Atom                                         | Core                                                                                                                                                                    |
 | [Codax](https://github.com/dscarpetti/codax) | [![Clojars Project](https://img.shields.io/clojars/v/org.clojars.frozenlock/dresser-impl-codax.svg)](https://clojars.org/org.clojars.frozenlock/dresser-impl-codax)     |
 | MongoDB                                      | [![Clojars Project](https://img.shields.io/clojars/v/org.clojars.frozenlock/dresser-impl-mongodb.svg)](https://clojars.org/org.clojars.frozenlock/dresser-impl-mongodb) |
 
 
 ## Why Use It?
 
-A limited set of functions (`fetch`, `assoc-at!`, `get-at`, ...) that are guaranteed to work with every implementation.
+Functions to fetch and update (`fetch`, `assoc-at!`, `get-at`, ...) that are guaranteed to work with every implementation.
 
-Any Dresser function you define can be used directly without special ceremony:
+- Store nested maps without normalization.
+- Swap implementations without code modification.
+- Easy tests and debug with in-memory dressers.
+
+
+No "buy-in" required for consumers. No deref, no manual opening of transactions.
+Dressers functions are usable directly without any ceremony:
+
 ```clojure
 (user-monthly-usage DB "user123") ;=> {:widgets 50, :bandwidth 100}
 ```
-... but will automatically reuse a transaction if it has the opportunity:
 
-```clojure
-(db/tx-let [tx DB]
-    [{:keys [widgets bandwidth]} (user-monthly-usage tx "user123")
-     invoice1 (widgets-invoice! tx "user123" widgets)
-     invoice2 (bandwidth-invoice! tx "users123" bandwidth)]
-  (send-invoices! tx [invoice1 invoice2] {:throw-on-error? true}))
-; If sending email fails, the whole transaction is cancelled
-```
-
-- Get started with your project without having to immediately choose your "forever DB".
-- Migrate from one storage backend to another without modifying your code.
-- Stuck with a particular DB you don't really like? Abstract your pain away!
-
-Start with a hashmap, then an atom, then a file-backed storage...
-Or do the reverse: copy a few documents from your multi-TBs database and safely debug with an in-memory version.
-
-Dresser is also able to abtract away shortcomings in underlying storage type.
-For example, MongoDB doesn't support `drop` inside a transaction, but its Dresser implementation does.
-
-### Is It Slower?
-
-Surprisingly, it can be faster!
-
-How? One would expect the wrappers to add a few ms at the very least.
-Indeed, but the IO operations dwarf this additional time.
-
-The speed gains can occur if you decrease the total number of separate transactions, which Dresser makes very easy to do. For example, the MongoDB implementation runs the tests in less than half the time when transactions are enabled vs when they are not.
-
-In other cases, such as with the Codax implementation, Dresser will abstract away the additional complexity of using the ["optimal"](https://github.com/Frozenlock/dresser/blob/master/dresser-impl-codax/src/dresser/impl/codax.clj#L85) approach.
 
 ## Usage
 
@@ -296,7 +273,7 @@ Unless you need some async operations, it's highly suggested to use an immutable
 
 Dresser was built with the idea that you should be able to get up and running quickly and then optimize when necessary. As such, many of the methods are optional. If there are not provided, they will fallback on a combination of fundamental methods.
 
-For example, `db/upsert-many!` will default to calling `db/upsert!` on every document individually. It's likely slower than using a method to insert many documents at once, but it means that your code will still work even if you don't implement this method. Later on, if you feel the need for increased speed, you can define a more specialized implmentation of `db/upsert-all!`.
+For example, `db/upsert-many!` will default to calling `db/upsert!` on every document individually. It's likely slower than using a method to insert many documents at once, but it means that your code will still work even if you don't implement this method. Later on, if you feel the need for increased speed, you can define a more specialized implmentation of `db/upsert-many!`.
 
 Even the base methods can be implemented using shortcuts.
 `db/fetch` is one of the most complex methods because of its various query operations.
