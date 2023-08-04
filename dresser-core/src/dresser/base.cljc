@@ -312,6 +312,12 @@
    (tx-> dresser
      (dp/-fetch-by-id  drawer id (only-sugar only) where))))
 
+(defn fetch-count
+  ([dresser drawer]
+   (fetch-count dresser drawer nil))
+  ([dresser drawer {:keys [where]}]
+   (tx-> dresser
+     (dp/-fetch-count drawer where))))
 
 (defn delete!
   {:doc (str (:doc (meta #'dp/-delete)) tx-note)}
@@ -378,7 +384,6 @@
   (with-result dresser (apply f (result dresser) args)))
 
 
-;; Should this be an optional implementation?
 (defn fetch-one
   ([dresser drawer]
    (fetch-one dresser drawer nil))
@@ -389,14 +394,6 @@
                     :sort  sort
                     :where where})
      (update-result first))))
-
-;; This one most likely should be an optional implementation
-(defn fetch-count
-  ([dresser drawer]
-   (fetch-count dresser drawer nil))
-  ([dresser drawer {:keys [where]}]
-   (tx-> dresser
-     (dp/-fetch-count drawer where))))
 
 
 
