@@ -212,6 +212,16 @@
     -upsert
     -with-temp-data]))
 
+(dp/defimpl -assoc-at
+  [tx drawer id ks data]
+  (-> (update-in tx [:db (dd/key drawer) id]
+                 (fn [doc]
+                   (-> (if (seq ks)
+                         (assoc-in doc ks data)
+                         data)
+                       (assoc :id id))))
+      (db/with-result data)))
+
 (dp/defimpl -fetch-by-id
   [tx drawer id only where]
   (let [drawer-key (dd/key drawer)]
@@ -221,7 +231,8 @@
               (take-from only)))))
 
 (def hashmap-adv-impl
-  (dp/mapify-impls [-fetch-by-id]))
+  (dp/mapify-impls [-assoc-at
+                    -fetch-by-id]))
 
 
 ;; This is used to test the optional implementations
