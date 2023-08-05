@@ -114,7 +114,6 @@
                     (ttl/upsert-expiration! d2 past)
                     (ttl/upsert-expiration! d3 future)
                     (ttl/upsert-expiration! d4 future))]
-      (def aaa dresser)
       (wait-while #(some? (refs/fetch-by-ref dresser d1)) 500)
       (db/tx-> dresser
         (dt/is-> (refs/fetch-by-ref d1) nil?)
