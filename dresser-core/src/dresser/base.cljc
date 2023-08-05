@@ -105,7 +105,7 @@
                                     {:body     (quote ~body)
                                      :returned ret#})))))
               ~(if-some [result? result?]
-                 result?
+                 {:result result?}
                  {:result? true})))
 
 (defmacro tx-let
