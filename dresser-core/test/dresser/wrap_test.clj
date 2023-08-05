@@ -120,8 +120,11 @@
                                                         (fn [tx & args]
                                                           (-> (apply m tx args)
                                                               (db/update-result conj :wrap4))))}}))]
-      (is (= [:closing1 :closing3 :wrap4 :wrap3 :wrap2 :wrap1]
-             (db/add! dresser :test {})))))
+      (db/tx-> dresser
+        (dt/is-> (db/add! :test {}) (= [:closing1 :closing3 :wrap4 :wrap3 :wrap2 :wrap1]))
+        (dt/testing-> "Closing fns are dropped once used"
+          (db/with-result nil)
+          (dt/is-> (db/add! :test {}) (= [:closing1 :closing3 :wrap4 :wrap3 :wrap2 :wrap1]))))))
 
   (testing "Transaction reverts changes on exeption"
     (let [layer1 (-> (hm/build)

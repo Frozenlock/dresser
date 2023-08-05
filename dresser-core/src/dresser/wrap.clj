@@ -151,12 +151,13 @@
           tx (apply method tx args)
           ;; retrieve the closing-fns stack
           [cf1 cf2 & cfs] (db/temp-data tx path)]
-      ;; Collapse the closing-fns one at a time.  When only when is
+      ;; Collapse the closing-fns one at a time.  When only one is
       ;; remaining, we are leaving the last layer and can apply it.
       (if cf2
         (let [new-cf1 (fn [tx & args] (apply cf1 (apply cf2 tx args) args))]
           (db/update-temp-data tx assoc-in path (conj cfs new-cf1)))
-        (apply cf1 tx args)))))
+        (-> (apply cf1 tx args)
+            (db/update-temp-data update ::closing-fns dissoc method-sym))))))
 
 
 (defn build
