@@ -94,7 +94,8 @@
 
   Defaults to extracting the result when leaving the transaction.
   To return the updated dresser instead, supply `:result?` as false."
-  [[tx-name dresser & [{:keys [result?]}]] & body]
+  {:arglists '([[tx-name dresser & [{:keys [result?] :as opts}]] & body])}
+  [[tx-name dresser & [{:keys [result?] :as opts}]] & body]
   `(transact! ~dresser
               (fn [tx#]
                 (let [~tx-name tx#
@@ -104,9 +105,9 @@
                     (throw (ex-info "Value returned by body must be a dresser"
                                     {:body     (quote ~body)
                                      :returned ret#})))))
-              ~(if-some [result? result?]
-                 {:result result?}
-                 {:result? true})))
+              ~(if (some? result?)
+                 opts
+                 (assoc opts :result? true))))
 
 (defmacro tx-let
   "Similar to `let`, but the first binding is wrapped inside a transaction.
@@ -123,12 +124,11 @@
   Defaults to extracting the result when leaving the transaction.
   To return the updated dresser instead, supply `:result?` as false."
   {:style/indent 2
-   ;:arglists     '([tx-binding bindings & body])
-   }
-  [[tx-name dresser & [{:keys [result?]}]] bindings & body]
+   :arglists     '([[tx-name dresser & [{:keys [result?]}]] bindings & body])}
+  [[tx-name dresser & [opts]] bindings & body]
   ;; This will only handle 1 dresser/tx at a time. Should add support
   ;; for many? Or perhaps throw an exception if many are detected?
-  `(with-tx [~tx-name ~dresser {:result? ~result?}]
+  `(with-tx [~tx-name ~dresser ~opts]
      ;; When applicable, convert the bindings in the following:
      ;;
      ;; [[tx result] (dr (func tx...))
