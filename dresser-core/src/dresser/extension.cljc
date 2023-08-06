@@ -52,21 +52,12 @@
                 (next fdecl)
                 fdecl)
         args (first fdecl)
-        body (rest fdecl)
-        hash-args (first body)]
-    ;; Quick typo check
-    (let [unkown-keys (-> hash-args
-                          (dissoc :deps :wrap-configs :init-fn :throw-on-reuse?)
-                          (keys)
-                          (seq))]
-      (when unkown-keys
-        (throw (ex-info "Unkown keys in extension definition"
-                        {:keys unkown-keys}))))
+        body (rest fdecl)]
     ;; Leverage 'defn'
     `(defn ~name
        ~(assoc m :doc doc)
        [~'dresser ~@args]
-       (build-ext ~'dresser ~(keyword (str *ns*) (str name)) ~hash-args))))
+       (build-ext ~'dresser ~(keyword (str *ns*) (str name)) ~@body))))
 
 (comment
   (defext my-ext
