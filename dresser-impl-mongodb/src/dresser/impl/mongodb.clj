@@ -428,10 +428,12 @@
           ;;   non-lazy)
 
           ]
-      ;; Post transaction operations.
-      ;; If something bad happens, must not throw in the main thread.
-      (future (doseq [f (:post-tx-fns dresser')]
-                (f)))
+      ;; Post-transaction operations.  This can't throw an exception
+      ;; as the mongoDB transaction is completed, but we might still
+      ;; be inside other transactions.
+      (try (doseq [f (:post-tx-fns dresser')]
+             (f))
+           (catch Exception _))
       (if result?
         (db/result dresser')
         (dissoc dresser' :transact :post-tx-fns)))))
