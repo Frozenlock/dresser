@@ -13,10 +13,6 @@
             [mongo-driver-3.client :as mcl]
             [mongo-driver-3.collection :as mc]))
 
-;; TODO: `upsert-all!` for a mass insert.  Also consider 'batching' or
-;; parallelizing operations. The latter might be simpler and can be
-;; applied to all methods.
-
 (defn- qualified-ident-name
   "Returns the qualified name when possible, otherwise just the name."
   [x]
@@ -445,7 +441,8 @@
           ]
       ;; Post-transaction operations.  This can't throw an exception
       ;; as the mongoDB transaction is completed, but we might still
-      ;; be inside other transactions.
+      ;; be inside other transactions that MUST complete to stay in
+      ;; sync.
       (try (doseq [f (:post-tx-fns dresser')]
              (f))
            (catch Exception _))
