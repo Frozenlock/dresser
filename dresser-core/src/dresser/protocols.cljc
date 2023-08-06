@@ -41,9 +41,9 @@
   method at any time."))
 
 (defpro DresserOptional
-  "Those method can be implemented directly for an improved performance,
+  "Those method can be implemented directly for improved performance,
 or they can be constructed using the `DresserFundamental` methods. See
-`optional-impl`."
+`dresser.impl.optional`."
   :extend-via-metadata true
   (-fetch-by-id ^:tx [dresser drawer id only where]
                 "Fetches documents from drawer. See also `fetch`.")
