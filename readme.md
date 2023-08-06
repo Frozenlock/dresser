@@ -7,7 +7,7 @@ A transactional storage abstraction for Clojure
 #### Core
 [![Clojars Project](https://img.shields.io/clojars/v/org.clojars.frozenlock/dresser.svg)](https://clojars.org/org.clojars.frozenlock/dresser)
 
-#### Status: Alpha
+#### Status: Early alpha
 We're still settling the API.
 Suggestions welcome!
 
@@ -302,12 +302,14 @@ This will be slower, but it's enough to get started and it will be fully compati
 Extensions are build on top of the dresser methods.
 Their purpose is to provide additional capabilities that will not only work on any dresser implementation, but will continue to work even after migrating the data from one implementation to another.
 
+Warning: extensions are a work in progress and will most likely have breaking changes.
+
 ## Schemas
 
 The base Dressers don't have any support for schemas.
 Similar (better) capabilities should be added via extensions.
 
-For example, an extensions could leverage Malli to validate all the data going in and conform all the data coming out. This would add support for additional types such as clojure sets. Contrary to normal DB schemas, those specs could be reused elsewhere, such as the HTTP handlers.
+For example, an extensions could leverage Malli to validate all the data going in and conform all the data coming out. Contrary to normal DB schemas, those specs could be reused elsewhere, such as in HTTP handlers.
 
 ## Todo:
 - Control automatic retries.
