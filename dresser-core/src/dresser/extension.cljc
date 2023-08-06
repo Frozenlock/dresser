@@ -36,7 +36,7 @@
                       "\n  "
                       "The wrapper will only apply itself once, but `init-fn` will always be called"
                       "\n\n  " (:doc (meta #'wrap/build)))
-   :style/indent 2}
+   :style/indent [:defn]}
   [name & fdecl]
   ;; Complex, but it's a copy/past from 'defn'
   (let [doc (if (string? (first fdecl))
