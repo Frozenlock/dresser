@@ -1,5 +1,6 @@
 (ns dresser.impl.mongodb
-  (:require [clojure.edn :as edn]
+  (:require [clojure.core.cache.wrapped :as cw]
+            [clojure.edn :as edn]
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.walk :as w]
@@ -156,30 +157,44 @@
 ;; it. Note that this relationship will break down once the drawers
 ;; are renamed, as the underlying collection won't be renamed.
 
+(defn- raw-drawer->coll
+  [[db session] drawer upsert?]
+  (let [encoded-drawer (encode-drawer drawer)
+        {:keys [coll expired?]} (mc/find-one db
+                                             drawers-registry
+                                             {:drawer encoded-drawer}
+                                             {:projection {:coll     1
+                                                           :expired? 1
+                                                           "_id"     0}
+                                              :session    session})]
+    (if (or (not coll) expired?)
+      (let [coll-name (if expired?
+                        (str (gensym encoded-drawer))
+                        encoded-drawer)]
+        (do (when upsert?
+              (mc/insert-one db
+                             drawers-registry
+                             {:drawer encoded-drawer
+                              :coll   coll-name}
+                             {:session session}))
+            coll-name))
+      coll)))
+
+;; Keep the drawers cached, as they are required for every operation.
 (defn- drawer->coll
-  ([[db session] drawer]
-   (drawer->coll [db session] drawer false))
-  ([[db session] drawer upsert?]
-   (let [encoded-drawer (encode-drawer drawer)
-         {:keys [coll expired?]} (mc/find-one db
-                                              drawers-registry
-                                              {:drawer encoded-drawer}
-                                              {:projection {:coll     1
-                                                            :expired? 1
-                                                            "_id"     0}
-                                               :session    session})]
-     (if (or (not coll) expired?)
-       (let [coll-name (if expired?
-                         (str (gensym encoded-drawer))
-                         encoded-drawer)]
-         (do (when upsert?
-               (mc/insert-one db
-                              drawers-registry
-                              {:drawer encoded-drawer
-                               :coll   coll-name}
-                              {:session session}))
-             coll-name))
-       coll))))
+  ([[db session *cache] drawer]
+   (drawer->coll [db session *cache] drawer false))
+  ([[db session *cache] drawer upsert?]
+   (let [lookup #(cw/lookup-or-miss
+                  *cache
+                  (dd/key drawer)
+                  (fn [_] (raw-drawer->coll [db session] drawer upsert?)))
+         result (lookup)]
+     (if (and (nil? result)
+              upsert?)
+       (do (cw/evict *cache (dd/key drawer))
+           (lookup))
+       result))))
 
 (defn drop-expired-collections!
   [db]
@@ -201,8 +216,8 @@
     (mc/delete-many db drawers-registry {:_id {:$in (map :_id expired)}})))
 
 (defn- rename-in-registry!
-  [{::keys [db session] :as tx} drawer new-drawer]
-  (let [coll (drawer->coll [db session] drawer)]
+  [{::keys [db session *cache] :as tx} drawer new-drawer]
+  (let [coll (drawer->coll [db session *cache] drawer)]
     (mc/find-one-and-update db
                             drawers-registry
                             {:drawer (encode-drawer drawer)}
@@ -213,6 +228,11 @@
                    {:drawer (encode-drawer new-drawer)
                     :coll   coll}
                    {:session session}))
+  ;; Clearing the cache can be done after because we are in a
+  ;; transaction.  In fact we may still fail later on and the cache
+  ;; would have been 'wrongly' cleared.
+  (cw/evict *cache (dd/key drawer))
+  (cw/evict *cache (dd/key new-drawer))
   (update tx :post-tx-fns conj #(drop-expired-collections! db)))
 
 (dp/defimpl -rename-drawer
@@ -271,9 +291,9 @@
            (apply array-map)))
 
 (defn fetch
-  [{::keys [db session] :as tx} drawer only limit where sort-config skip]
+  [{::keys [db session *cache] :as tx} drawer only limit where sort-config skip]
   (let [result (->> (mc/find db
-                             (drawer->coll [db session] drawer)
+                             (drawer->coll [db session *cache] drawer)
                              (prepare-where where)
                              {:keywordize? false
                               :limit       limit
@@ -299,16 +319,19 @@
   (fetch tx drawer only limit where sort-config skip))
 
 (dp/defimpl -fetch-count
-  [{::keys [db session] :as dresser} drawer where]
+  [{::keys [db session *cache] :as dresser} drawer where]
   (->> (mc/count-documents db
-                           (drawer->coll [db session] drawer)
+                           (drawer->coll [db session *cache] drawer)
                            (prepare-where where)
                            {:session session})
        (db/with-result dresser)))
 
 ;; MongoDB currently doesn't support '.drop()' inside a transaction.
 (dp/defimpl -drop
-  [{::keys [db session] :as dresser} drawer]
+  [{::keys [db session *cache] :as dresser} drawer]
+  ;; Clearing the cache must be first because we are not in a
+  ;; transaction.
+  (cw/evict *cache (dd/key drawer))
   (mc/find-one-and-update db
                           drawers-registry
                           {:drawer (encode-drawer drawer)}
@@ -328,22 +351,22 @@
   (get dresser :data))
 
 (dp/defimpl -delete
-  [{::keys [db session] :as tx} drawer id]
+  [{::keys [db session *cache] :as tx} drawer id]
   (mc/delete-one db
-                 (drawer->coll [db session] drawer)
+                 (drawer->coll [db session *cache] drawer)
                  (id->mid {:id id})
                  {:session session})
   (db/with-result tx id))
 
 (defn upsert
-  [{::keys [db session] :as dresser} drawer data]
+  [{::keys [db session *cache] :as dresser} drawer data]
   (let [document-id (:id data)
         _ (when-not document-id
             (throw (ex-info "Missing document ID" {})))
         encoded (-> (id->mid data)
                     (encode))]
     (->> (mc/find-one-and-replace db
-                                  (drawer->coll [db session] drawer :upsert)
+                                  (drawer->coll [db session *cache] drawer :upsert)
                                   (select-keys encoded ["_id"])
                                   encoded
                                   {:keywordize? false
@@ -359,9 +382,9 @@
   (upsert dresser drawer data))
 
 (defn upsert-many
-  [{::keys [db session] :as dresser} drawer docs]
+  [{::keys [db session *cache] :as dresser} drawer docs]
   (mc/bulk-write db
-                 (drawer->coll [db session] drawer :upsert)
+                 (drawer->coll [db session *cache] drawer :upsert)
                  (for [doc docs
                        :let [document-id (:id doc)
                              _ (when-not document-id
@@ -375,7 +398,7 @@
   (db/with-result dresser docs))
 
 (dp/defimpl -upsert-many
-  [{::keys [db session] :as dresser} drawer docs]
+  [{::keys [db session *cache] :as dresser} drawer docs]
   (upsert-many dresser drawer docs))
 
 ;; transactionLifetimeLimitSeconds <-- might be useful in the future
@@ -456,7 +479,8 @@
          db (mcl/get-db client db-name)]
      (vary-meta {::client     client
                  ::db         db
-                 ::db-configs db-configs}
+                 ::db-configs db-configs
+                 ::*cache (cw/lru-cache-factory {})}
                 merge
                 opt/optional-impl
                 (mongo-impl)
@@ -471,28 +495,24 @@
                    :port    27018}))
   (do (.drop (::db aaa))
       (.close (::client aaa))
-      )
+      ))
 
-
-  (comment
-    (require '[dresser.extensions.ttl :as ttl])
-    (def aaa (-> (build "test-db")
-                 (ttl/ttl (ttl/secs 10))
-                 (db/start)
-                 ))
+(comment
+  (require '[dresser.extensions.cache :as cache])
+  (require '[dresser.impl.hashmap :as hm])
+  (require '[dresser.impl.atom :as at])
+  (require '[dresser.extensions.ttl :as ttl])
+  (let [aaa (cache/cache aaa (hm/build))]
     (time (let [add-rnd-user! (fn [aaa idx]
                                 (let [username (str (gensym "user-"))
-                                      email (str username "@" (gensym "email") ".com")]
+                                      email    (str username "@" (gensym "email") ".com")]
                                   (ttl/add-with-ttl! aaa :users {:username username :email email
                                                                  :idx      idx}
                                                      (ttl/secs (rand-int 20)))))]
-            ;; This causes a write conflict initially because the drawer is being added to the registry
-            (last (pmap (fn [idxes]
-                          (db/with-tx [tx aaa]
-                            (reduce (fn [tx idx]
-                                      (add-rnd-user! tx idx))
-                                    tx
-                                    idxes))) (partition 5 (range 10000))))))
-    (ttl/add-with-ttl! aaa :users {:username "Will be deleted!" :email "..@.."} (ttl/secs 10)))
+            (last (db/with-tx [tx aaa]
+                    (reduce (fn [tx idx]
+                              (add-rnd-user! tx idx))
+                            tx
+                            (range 1000))))))))
 
-  )
+

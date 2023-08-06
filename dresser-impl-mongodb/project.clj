@@ -8,7 +8,9 @@
 
                  ;; MongoDB
                  [mongo-driver-3 "0.7.0"]
-                 [org.mongodb/mongodb-driver-sync "4.7.1"]]
+                 [org.mongodb/mongodb-driver-sync "4.7.1"]
+
+                 [org.clojure/core.cache "1.0.225"]]
   :plugins [[lein-modules "0.3.11"]]
   :profiles {:dev {:dependencies [[org.slf4j/slf4j-nop "2.0.7"]]}}
   :test-paths ["src" "test"]
