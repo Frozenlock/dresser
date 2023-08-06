@@ -141,10 +141,13 @@
 ;; documents.
 
 
+;; TODO: Optimize. Building the stack for every method, even when not
+;;       needed, is wasteful.
 (defn wrap-closing-fn
   [method method-sym closing-fn]
   (fn [tx & args]
     (let [path [::closing-fns method-sym]
+          closing-fn (or closing-fn (fn closing-default [tx & _args] tx))
           ;; add the closing-fn to the stack
           tx (db/update-temp-data tx update-in path #(conj % closing-fn))
           ;; apply the method
@@ -186,8 +189,7 @@
 
                ;; User-provided wrapped method
                (into {} (for [[sym cfgs] method->pre-post-wrap
-                              :let [closing (or (:closing cfgs)
-                                                (fn closing-default [tx & _args] tx))]]
+                              :let [closing (:closing cfgs)]]
                           [sym (-> (wrap-method sym cfgs tx-data-key)
                                    (wrap-closing-fn sym closing))]))
 
