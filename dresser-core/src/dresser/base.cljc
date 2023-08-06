@@ -11,9 +11,8 @@
   [x]
   ;; Currently (clojure 1.11.1) `satisfies?` doesn't work with methods
   ;; provided via metadata. Fallback on types instead.
+  (= (type x) ::dresser))
 
-  ;; Use namespaced keyword to allow usage of `derive`.
-  (isa? (type x) ::dresser))
 
 
 (defn temp-data
