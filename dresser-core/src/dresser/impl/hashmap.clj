@@ -162,11 +162,8 @@
 
 (dp/defimpl -upsert
   [tx drawer data]
-  (let [drawer-key (dd/key drawer)
-        document-id (:id data)]
-    (when-not document-id
-      (throw (ex-info "Missing document ID" {})))
-    (-> (assoc-in tx [:db drawer-key document-id] data)
+  (let [drawer-key (dd/key drawer)]
+    (-> (assoc-in tx [:db drawer-key (:id data)] data)
         (db/with-result data))))
 
 (dp/defimpl -transact

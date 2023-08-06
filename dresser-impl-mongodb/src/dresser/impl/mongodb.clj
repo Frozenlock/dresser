@@ -360,10 +360,7 @@
 
 (defn upsert
   [{::keys [db session *cache] :as dresser} drawer data]
-  (let [document-id (:id data)
-        _ (when-not document-id
-            (throw (ex-info "Missing document ID" {})))
-        encoded (-> (id->mid data)
+  (let [encoded (-> (id->mid data)
                     (encode))]
     (->> (mc/find-one-and-replace db
                                   (drawer->coll [db session *cache] drawer :upsert)
@@ -386,10 +383,7 @@
   (mc/bulk-write db
                  (drawer->coll [db session *cache] drawer :upsert)
                  (for [doc docs
-                       :let [document-id (:id doc)
-                             _ (when-not document-id
-                                 (throw (ex-info "Missing document ID" {})))
-                             encoded (-> (id->mid doc)
+                       :let [encoded (-> (id->mid doc)
                                          (encode))]]
                    [:replace-one {:filter      (select-keys encoded ["_id"])
                                   :replacement encoded

@@ -178,11 +178,7 @@
   [tx drawer data]
   (let [drawer-key (dd/key drawer)
         codax (:codax tx)
-        document-id (:id data)
-        _ (when-not document-id
-            (throw (ex-info "Missing document ID" {})))
-        codax (c/assoc-at codax [drawer-key document-id] data)
-
+        codax (c/assoc-at codax [drawer-key (:id data)] data)
         drawer-registered? (c/get-at codax [codax-drawers drawer-key])
         codax (if-not drawer-registered?
                (c/assoc-at codax [codax-drawers drawer-key] true)

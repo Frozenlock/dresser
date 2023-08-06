@@ -30,8 +30,8 @@
     (testing "Throw read only exceptions"
       (are-read-only-exceptions?
        (db/assoc-at! dresser :drawer :id [:path] {:a 1})
-       (db/upsert-many! dresser :drawer [{:a 1} {:b 1}])
-       (db/upsert! dresser :drawer {:a 1})
+       (db/upsert-many! dresser :drawer [{:id 1} {:id 2}])
+       (db/upsert! dresser :drawer {:id 1})
        (db/gen-id! dresser :drawer)
        (db/delete! dresser :drawer :id)
        (db/drop! dresser :drawer)

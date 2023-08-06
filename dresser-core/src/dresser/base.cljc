@@ -326,6 +326,23 @@
     (tx-> dresser
       (dp/-delete drawer id))))
 
+(defn upsert!
+  {:doc (str (:doc (meta #'dp/-upsert)) tx-note)}
+  [dresser drawer data]
+  (when-not (:id data)
+    (throw (ex-info "Missing document ID" {:doc data})))
+  (tx-> dresser
+    (dp/-upsert drawer data)))
+
+(defn upsert-many!
+  {:doc (str (:doc (meta #'dp/-upsert-many)) tx-note)}
+  [dresser drawer docs]
+  (doseq [doc docs]
+    (when-not (:id doc)
+      (throw (ex-info "Missing document ID" {:doc doc}))))
+  (tx-> dresser
+    (dp/-upsert-many drawer docs)))
+
 ;;;;;;
 
 
