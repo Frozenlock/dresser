@@ -3,7 +3,7 @@
             [dresser.base :as db]
             [dresser.impl.mongodb :as impl]
             [dresser.test :as dt]
-            [dresser.impl.test-utils :as tu]))
+            [dresser.impl.mongodb-test-utils :as tu]))
 
 (defn with-ensure-db
   [f]

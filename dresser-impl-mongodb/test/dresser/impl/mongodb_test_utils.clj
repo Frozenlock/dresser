@@ -1,4 +1,4 @@
-(ns dresser.impl.test-utils
+(ns dresser.impl.mongodb-test-utils
   (:require  [clojure.test :as t]
              [clojure.java.io :as io])
   (:import [java.io Closeable]
