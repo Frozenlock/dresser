@@ -70,6 +70,30 @@
 
 ;; Pretty shitty encode/decode. I'm open to suggestions.
 
+(declare encode)
+(declare decode)
+
+;; Collections are appended with their type before storing in the DB.
+
+(defn- encode-coll
+  [coll]
+  (let [encode-key (cond
+                     (vector? coll) "_drs_vec"
+                     (list? coll) "_drs_list"
+                     (set? coll) "_drs_set"
+                     :else "drs_vec")]
+    (into [encode-key] (map encode coll))))
+
+(defn- decode-coll
+  [encoded-coll]
+  (let [encode-key (first encoded-coll)
+        decoder {"_drs_vec"  #(mapv decode (rest %))
+                 "_drs_list" #(reverse (into '() (map decode (rest %))))
+                 "_drs_set"  #(set (map decode (rest %)))}]
+    (if-let [decode-fn (decoder encode-key)]
+      (decode-fn encoded-coll)
+      encoded-coll)))
+
 (defn- encode
   [x]
   (cond
@@ -86,18 +110,17 @@
                            :else k)
                          (encode v)]))
     (and (coll? x)
-         (not (db/ops? x))) (into (empty x) (map encode x))
+         (not (db/ops? x))) (encode-coll x)
     (keyword? x) (str "drs_kw_" (qualified-ident-name x))
     :else x))
 
 (defn- decode
   [x]
-  x
   (cond
     (map? x) (into {} (for [[k v] x]
                         [(decode k)
                          (decode v)]))
-    (coll? x) (into (empty x) (map decode x))
+    (coll? x) (decode-coll x)
     (string? x) (cond
                   (str/starts-with? x "drs_kw_") (keyword (str/replace-first x "drs_kw_" ""))
                   (str/starts-with? x "drs_coll_") (edn/read-string (str/replace-first x "drs_coll_" ""))
@@ -243,8 +266,7 @@
   [{::keys [db session] :as tx}]
   (->> (mc/find db drawers-registry {} {:projection {:drawer 1}
                                         :session    session})
-       (map :drawer)
-       (decode)
+       (map (comp decode :drawer))
        (db/with-result tx)))
 
 ;;; --------------------------
@@ -310,8 +332,7 @@
 
                   :else x))
               result)
-         (decode)
-         (reverse)
+         (map decode)
          (db/with-result tx))))
 
 (dp/defimpl -fetch
