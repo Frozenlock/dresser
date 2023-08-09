@@ -117,13 +117,13 @@
                         [(decode k)
                          (decode v)]))
     (coll? x) (decode-coll x)
-    (string? x) (cond
-                  (str/starts-with? x "drs_kw_") (keyword (str/replace-first x "drs_kw_" ""))
-                  (str/starts-with? x "drs_coll_") (edn/read-string (str/replace-first x "drs_coll_" ""))
-                  (str/starts-with? x "drs_num_") (edn/read-string (str/replace-first x "drs_num_" ""))
-                  (str/starts-with? x "drs_inst_") (java.util.Date.
-                                                    (edn/read-string (str/replace-first x "drs_inst_" "")))
-                  :else x)
+    (string? x) (if-let [[_ _drs xtype xname] (re-matches #"^(drs_)(.*)_(.*)" x)]
+                  (case xtype
+                    "kw" (keyword xname)
+                    "coll" (edn/read-string xname)
+                    "num" (edn/read-string xname)
+                    "inst" (edn/read-string xname))
+                  x)
     :else x))
 
 
