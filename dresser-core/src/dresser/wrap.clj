@@ -68,6 +68,8 @@
                                (assoc src-temp-data tx-data-key tx-data)
                                src-temp-data)))))
 
+;; TODO: Consider dropping the complex pre/post and '+' versions.
+
 (defn- wrap-method
   "`:wrap` receives a dresser method and returns a wrapped
   method. Similar to web handler middleware.
