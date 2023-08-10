@@ -141,27 +141,28 @@
 ;; documents.
 
 
-;; TODO: Optimize. Building the stack for every method, even when not
-;;       needed, is wasteful.
+(def ^:dynamic ^:private *stack-level* 0)
+
 (defn wrap-closing-fn
   [method method-sym closing-fn]
-  (fn [tx & args]
-    (let [path [::closing-fns method-sym]
-          closing-fn (or closing-fn (fn closing-default [tx & _args] tx))
-          ;; add the closing-fn to the stack
-          tx (db/update-temp-data tx update-in path #(conj % closing-fn))
-          ;; apply the method
-          tx (apply method tx args)
-          ;; retrieve the closing-fns stack
-          [cf1 cf2 & cfs] (db/temp-data tx path)]
-      ;; Collapse the closing-fns one at a time.  When only one is
-      ;; remaining, we are leaving the last layer and can apply it.
-      (if cf2
-        (let [new-cf1 (fn [tx & args] (apply cf1 (apply cf2 tx args) args))]
-          (db/update-temp-data tx assoc-in path (conj cfs new-cf1)))
-        (-> (apply cf1 tx args)
-            (db/update-temp-data update ::closing-fns dissoc method-sym))))))
-
+  (let [path [::closing-fns method-sym]]
+    (fn [tx & args]
+      ;; Fetching/updating inside a nested map is relatively
+      ;; expensive, especially considering that `wrap-closing-fn` is
+      ;; used on all methods. Using a dynamic variable is MUCH faster.
+      (binding [*stack-level* (inc *stack-level*)]
+        (let [;; add the closing-fn to the stack
+              tx (cond-> tx
+                   closing-fn (db/update-temp-data update-in path #((fnil conj []) % closing-fn)))
+              ;; apply the method
+              tx (apply method tx args)
+              ;; retrieve the closing-fns stack
+              cfs (when (= 1 *stack-level*) ; back to the first outer layer
+                    (db/temp-data tx path))]
+          (if (not-empty cfs)
+            (-> (reduce (fn [tx' cf] (apply cf tx' args)) tx cfs)
+                (db/update-temp-data update ::closing-fns dissoc method-sym))
+            tx))))))
 
 (defn build
   {:doc
