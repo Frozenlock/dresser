@@ -606,7 +606,7 @@ time and a drawer-object the other half."
 (defn test--dont-blow-up-stack
   [impl-f]
   (time
-   ;; Takes ~6.5s for Codax and ~45s(!!!) for MongoDB
+   ;; Takes ~6.5s for Codax and ~24s(!!!) for MongoDB
    (testing "Transactions don't blow up the stack"
      (let [add-doc! (fn [dresser idx]
                       (db/with-tx [tx dresser]

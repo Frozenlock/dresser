@@ -88,24 +88,23 @@ Let's start by using a simple atom implementation:
 
 ### `fetch` queries
 
-While most functions allow for retrieval or update of a single document, `fetch` and its derivatives allow for queries that returns multiple documents.
+While most functions allow for retrieval or update of a single document, `fetch` and its derivatives allow for queries that return multiple documents.
 
 `fetch` is configured with those optional entries:
 
-- `:only`: returns only a subset of the documents.
+- `:only` returns only a subset of the documents.
 	The map provided under `:only` will be filled with the values from the fetched document.
 	```clojure
 	(db/fetch my-db :users {:only {:name true}})
-	
 	;; `:only` also accepts vectors, which are converted into map entries.
 	;; [:name] -> {:name true}
 	;; {:address [:street :country]} -> {:address {:street true, :country true}}
 	```
-- `:where`: returns the documents that match all the conditions.
+- `:where` returns the documents that match all the conditions.
   - Operators:
-	- `lt`/`lte`: 'less than' and 'less than or equal'.
-	- `gt`/`gte`: 'greater than' and 'greater than or equal'.
-	- `exists?`: Whether the field exists.
+	- `lt`/`lte` 'less than' and 'less than or equal'.
+	- `gt`/`gte` 'greater than' and 'greater than or equal'.
+	- `exists?` Whether the field exists.
 	- Equality condition is implied if no operator is provided.
     ```clojure
 	;; Fetches the users with a name 'greater than' "M" and where the `:age` field exists.
@@ -119,14 +118,14 @@ While most functions allow for retrieval or update of a single document, `fetch`
 	                        :only [:name]})
 	;=> ({:name "Xander"})
 	```
-- `:sort`: sorts the selected document by the given fields and directions.
+- `:sort` sorts the selected document by the given fields and directions.
 	```clojure
 	(db/fetch my-db :users {:sort [[[:age] :asc]
                                    [[:address :street] :desc]]})
 	;; Sorts the users by ascending age, then by descending street in case of age equality.
 	```
-- `:limit`: limits the number of documents returned. Similar to `clojure.core/take`.
-- `:skip`: skips X documents that would otherwise have been returned. Similar to `clojure.core/drop`.
+- `:limit` limits the number of documents returned. Similar to `clojure.core/take`.
+- `:skip` skips X documents that would otherwise have been returned. Similar to `clojure.core/drop`.
 
 
 ### Transactions
@@ -340,10 +339,10 @@ This will be slower, but it's enough to get started and it will be fully compati
 
 ## Extensions
 
+WARNING: extensions are a work in progress and will most likely have breaking changes.
+
 Extensions are build on top of the dresser methods.
 Their purpose is to provide additional capabilities that will not only work on any dresser implementation, but will continue to work even after migrating the data from one implementation to another.
-
-Warning: extensions are a work in progress and will most likely have breaking changes.
 
 ## Schemas
 
