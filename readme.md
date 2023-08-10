@@ -356,7 +356,6 @@ For example, an extensions could leverage Malli to validate all the data going i
 - Control automatic retries.
 - More testing.
 - Make hashmap and atom implementations more representative of other implementations:
-  - Sets should be automatically converted to simple collections.
   - Unsupported types should throw.
   The goal is to be able to reliably test with in-memory versions.
 - Link/merge multiple instances.
