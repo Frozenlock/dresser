@@ -85,9 +85,10 @@ Let's start by using a simple atom implementation:
 
 
 ```
-### Fetches
 
-While most functions allow for retrieval or update of particular documents, `fetch` and its derivatives allow for queries that returns multiple documents.
+### `fetch` queries
+
+While most functions allow for retrieval or update of a single document, `fetch` and its derivatives allow for queries that returns multiple documents.
 
 `fetch` is configured with those optional entries:
 
@@ -97,20 +98,26 @@ While most functions allow for retrieval or update of particular documents, `fet
 	(db/fetch my-db :users {:only {:name true}})
 	
 	;; `:only` also accepts vectors, which are converted into map entries.
-	;; {:only [:name]} -> {:only {:name true}}
-	;; {:only {:address [:street :country]}} -> {:only {:address {:street true, :country true}}}
+	;; [:name] -> {:name true}
+	;; {:address [:street :country]} -> {:address {:street true, :country true}}
 	```
 - `:where`: returns the documents that match all the conditions.
   - Operators:
 	- `lt`/`lte`: 'less than' and 'less than or equal'.
 	- `gt`/`gte`: 'greater than' and 'greater than or equal'.
 	- `exists?`: Whether the field exists.
+	- Equality condition is implied if no operator is provided.
     ```clojure
+	;; Fetches the users with a name 'greater than' "M" and where the `:age` field exists.
 	(db/fetch my-db :users {:where {:name {db/gt "M"}
                                     :age {db/exists? true}}
                             :only [:name]})
-	;; Fetches the users with a name 'greater than' "M" and where the `:age` field exists.
 	;=> ({:name "Martin"} {:name "Xander"})
+
+	;; Implied equality condition:
+	(db/fetch my-db :users {:where {:age 8}
+	                        :only [:name]})
+	;=> ({:name "Xander"})
 	```
 - `:sort`: sorts the selected document by the given fields and directions.
 	```clojure
