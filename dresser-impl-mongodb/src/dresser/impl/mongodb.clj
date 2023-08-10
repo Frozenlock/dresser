@@ -13,6 +13,10 @@
             [mongo-driver-3.client :as mcl]
             [mongo-driver-3.collection :as mc]))
 
+;; TODO: add support for '.' and '$' in collection and key names.
+;; While docs with '.' in keys can be fetched, it breaks things for `get-at`.
+;; Best approach? https://stackoverflow.com/questions/12397118/mongodb-dot-in-key-name
+
 (defn- qualified-ident-name
   "Returns the qualified name when possible, otherwise just the name."
   [x]
