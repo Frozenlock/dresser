@@ -85,7 +85,41 @@ Let's start by using a simple atom implementation:
 
 
 ```
+### Fetches
 
+While most functions allow for retrieval or update of particular documents, `fetch` and its derivatives allow for queries that returns multiple documents.
+
+`fetch` is configured with those optional entries:
+
+- `:only`: returns only a subset of the documents.
+	The map provided under `:only` will be filled with the values from the fetched document.
+	```clojure
+	(db/fetch my-db :users {:only {:name true}})
+	
+	;; `:only` also accepts vectors, which are converted into map entries.
+	;; {:only [:name]} -> {:only {:name true}}
+	;; {:only {:address [:street :country]}} -> {:only {:address {:street true, :country true}}}
+	```
+- `:where`: returns the documents that match all the conditions.
+  - Operators:
+	- `lt`/`lte`: 'less than' and 'less than or equal'.
+	- `gt`/`gte`: 'greater than' and 'greater than or equal'.
+	- `exists?`: Whether the field exists.
+    ```clojure
+	(db/fetch my-db :users {:where {:name {db/gt "M"}
+                                    :age {db/exists? true}}
+                            :only [:name]})
+	;; Fetches the users with a name 'greater than' "M" and where the `:age` field exists.
+	;=> ({:name "Martin"} {:name "Xander"})
+	```
+- `:sort`: sorts the selected document by the given fields and directions.
+	```clojure
+	(db/fetch my-db :users {:sort [[[:age] :asc]
+                                   [[:address :street] :desc]]})
+	;; Sorts the users by ascending age, then by descending street in case of age equality.
+	```
+- `:limit`: limits the number of documents returned. Similar to `clojure.core/take`.
+- `:skip`: skips X documents that would otherwise have been returned. Similar to `clojure.core/drop`.
 
 
 ### Transactions
