@@ -107,7 +107,7 @@ While most functions allow for retrieval or update of a single document, `fetch`
 	- `exists?` Whether the field exists.
 	- Equality condition is implied if no operator is provided.
     ```clojure
-	;; Fetches the users with a name 'greater than' "M" and where the `:age` field exists.
+	;; Fetches users with a name greater than "M" and where `:age` exists.
 	(db/fetch my-db :users {:where {:name {db/gt "M"}
                                     :age {db/exists? true}}
                             :only [:name]})
@@ -122,7 +122,7 @@ While most functions allow for retrieval or update of a single document, `fetch`
 	```clojure
 	(db/fetch my-db :users {:sort [[[:age] :asc]
                                    [[:address :street] :desc]]})
-	;; Sorts the users by ascending age, then by descending street in case of age equality.
+	;; Sorts users by ascending age, then by descending street in case of equality.
 	```
 - `:limit` limits the number of documents returned. Similar to `clojure.core/take`.
 - `:skip` skips X documents that would otherwise have been returned. Similar to `clojure.core/drop`.
@@ -358,6 +358,7 @@ For example, an extensions could leverage Malli to validate all the data going i
   - Unsupported types should throw.
   The goal is to be able to reliably test with in-memory versions.
 - Link/merge multiple instances.
+- Clojurescript
 - Caching/reaction
 - Malli/specs extention (DB schemas, but better and reusable in HTTP forms and elsewhere).
 
