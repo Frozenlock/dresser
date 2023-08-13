@@ -1,7 +1,6 @@
 (ns dresser.wrap
   (:require [dresser.base :as db]
-            [dresser.protocols :as dp]
-            [clojure.string :as str]))
+            [dresser.protocols :as dp]))
 
 ;; It's possible to wrap a Dresser implementation and intercept its
 ;; methods before and after they are applied.
@@ -26,49 +25,22 @@
 ;; └─── close transaction D
 
 
-(defn- f--transact
-  "Generates `dp/-transact` implementation with a private tx-data."
-  [tx-data-key]
-  (let [dissoc-tx-data (fn [dresser]
-                             (db/with-temp-data dresser
-                               (-> (db/temp-data dresser)
-                                   (dissoc tx-data-key))))]
-    (dp/impl -transact
-      [dresser f {:keys [result?] :as opts}]
-      (if (:transact dresser)
-        (f dresser)
+(dp/defimpl -transact
+  [dresser f {:keys [result?] :as opts}]
+  (if (:transact dresser)
+    (f dresser)
 
-        (let [f' (fn [tx]
-                   ;; The last action in the transaction will be to
-                   ;; remove the data stored at tx-data-key.
-                   (-> (f tx)
-                       (dissoc-tx-data)))
-
-              ;; Evaluate everything inside the source transaction.
-              updated-source (db/transact!
-                              (:source dresser)
-                              (fn [src-tx]
-                                ;; Inside the source transaction (src-tx), do the wrapped transaction.
-                                (:source (f' (assoc dresser :transact true :source src-tx))))
-                              (assoc opts :result? false))
-              return (assoc dresser :source updated-source)]
-          (if result?
-            (db/result return)
-            (dissoc return :transact)))))))
-
-(defn- wrap-temp-data
-  "The source temp-data is restored after applying pre or post, except
-  for tx-data-key."
-  [pre-or-post tx-data-key]
-  (fn [tx & args]
-    (let [src-temp-data (db/temp-data tx)
-          tx' (apply pre-or-post tx args)
-          tx-data (get (db/temp-data tx') tx-data-key)]
-      (db/with-temp-data tx' (if tx-data
-                               (assoc src-temp-data tx-data-key tx-data)
-                               src-temp-data)))))
-
-;; TODO: Consider dropping the complex pre/post and '+' versions.
+    (let [;; Evaluate everything inside the source transaction.
+          updated-source (db/transact!
+                          (:source dresser)
+                          (fn [src-tx]
+                            ;; Inside the source transaction (src-tx), do the wrapped transaction.
+                            (:source (f (assoc dresser :transact true :source src-tx))))
+                          (assoc opts :result? false))
+          return (assoc dresser :source updated-source)]
+      (if result?
+        (db/result return)
+        (dissoc return :transact)))))
 
 (defn- wrap-method
   "`:wrap` receives a dresser method and returns a wrapped
@@ -77,18 +49,14 @@
   (fn [method]
     (fn [tx & args]
       (apply method tx args)))"
-  [method-sym {:keys [wrap wrap+]} tx-data-key]
-  (assert (not (or (and wrap wrap+))))
+  [method-sym wrap]
   (let [method (resolve method-sym)
-        wrap-cfgs {:tx-data-key tx-data-key}
-        wrap' (or (some-> wrap+ (partial wrap-cfgs))
-                  wrap)
-        wrapped-method (or (when wrap' (wrap' method))
-                           method)]
+        wrapped-method (cond-> method
+                         wrap wrap)]
     (-> (fn [dresser & method-args]
-          (cond-> (:source dresser)
-            true ((fn [tx] (apply wrapped-method tx method-args)))
-            true ((fn [tx] (assoc dresser :source tx)))))
+          (as-> (:source dresser) tx
+            (apply wrapped-method tx method-args)
+            (assoc dresser :source tx)))
         (vary-meta merge (meta wrapped-method)))))
 
 (dp/defimpl -temp-data
@@ -136,8 +104,7 @@
   (let [unexpected-symbols (seq (remove (set dp/dresser-symbols)
                                         (keys method->wrap)))
         _ (when unexpected-symbols (throw (ex-info "Unexpected method symbols"
-                                                   {:symbols unexpected-symbols})))
-        tx-data-key (gensym "tx-data-")]
+                                                   {:symbols unexpected-symbols})))]
 
     (vary-meta (assoc {} :source dresser)
                merge
@@ -146,42 +113,16 @@
                ;; By default all methods are wrapped in order to
                ;; correctly handle the wrapped dresser object.
                (into {} (for [sym dp/dresser-symbols]
-                          [sym (wrap-method sym {} tx-data-key)]))
+                          [sym (wrap-method sym nil)]))
 
                ;; User-provided wrapped method
                (into {} (for [[sym cfgs] method->wrap
-                              :let [closing (:closing cfgs)]]
-                          [sym (-> (wrap-method sym cfgs tx-data-key)
+                              :let [{:keys [wrap closing]} cfgs]]
+                          [sym (-> (wrap-method sym wrap)
                                    (wrap-closing-fn sym closing))]))
 
                ;; Those methods require careful attention.
                ;; Better to not let users redefine them.
-               (dp/mapify-impls [(f--transact tx-data-key)
+               (dp/mapify-impls [-transact
                                  -temp-data]))))
 
-
-
-
-;;;;;;;;;;;;;;;
-
-
-(comment
-  ;; An extension could be written with this principle for all dresser
-  ;; methods inside a transaction. The cache would need to be
-  ;; invalidated for a given document whenever a 'write' method is used.
-  (defn tx-memoize
-    "Returns a function that stores its results in the tx temporary data
-  store. All subsequent calls will use the stored results instead of
-  querying the DB again.
-
-  Only use when you are certain the result cannot change in the middle
-  of the transaction."
-    [f tx-data-key]
-    (fn [tx & args]
-      (let [cache-key [tx-data-key ::memoize f args]
-            cached (get-in (db/temp-data tx) cache-key :not-found)]
-        (if-not (= cached :not-found)
-          (db/with-result tx cached)
-          (let [[tx result] (db/dr (apply f tx args))]
-            (-> (db/update-temp-data tx assoc-in cache-key result)
-                (db/with-result result))))))))

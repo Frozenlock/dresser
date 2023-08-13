@@ -28,11 +28,11 @@
           wrap-fn (fn [impl pre-k post-k]
                     ;; The wrappper adds pre-k and post-k document
                     ;; whenever the 'add' method is called
-                    (wrap/build impl {`dp/-add {:wrap (fn [add-method]
+                    (wrap/build impl {`dp/-add {:wrap (fn [_add-method]
                                                         (fn [tx drawer data]
                                                           (db/tx-let [tx tx]
                                                               [_ (db/add! tx drawer {:v pre-k})
-                                                               id (add-method tx drawer data)
+                                                               id (db/add! tx drawer data)
                                                                _ (db/add! tx drawer {:v post-k})]
                                                             id)))}}))]
       (let [result (db/tx-> (wrap-fn (make-impl) :pre1 :post1)
