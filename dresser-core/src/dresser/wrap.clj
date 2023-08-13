@@ -69,6 +69,20 @@
 (def ^:dynamic ^:private *stack-level* 0)
 
 (defn wrap-closing-fn
+  "`:closing` is a function receiving the same arguments as the wrapped
+  method, but it is evaluated after the wrapped method.
+
+  (fn [tx & args] ...)
+
+  If multiple wrap layers exist, the closing functions across all the
+  layers are composed in such a way that the FIRST layer closing
+  function is evaluated LAST.
+
+  (-> dresser
+    (wrapper-1)
+    (wrapper-2)
+    (closing-2)
+    (closing-1))"
   [method method-sym closing-fn]
   (let [path [::closing-fns method-sym]]
     (fn [tx & args]
@@ -95,7 +109,9 @@
   Ex:
   {`dp/-add {:wrap add-wrapper}}"
         "\n\n  "
-        (:doc (meta #'wrap-method)))}
+        (:doc (meta #'wrap-method))
+        "\n\n  "
+        (:doc (meta #'wrap-closing-fn)))}
   [dresser method->wrap]
   (assert (db/dresser? dresser))
   (let [unexpected-symbols (seq (remove (set dp/dresser-symbols)
