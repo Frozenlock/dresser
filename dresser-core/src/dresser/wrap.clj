@@ -43,12 +43,6 @@
         (dissoc return :transact)))))
 
 (defn- wrap-method
-  "`:wrap` receives a dresser method and returns a wrapped
-  method. Similar to web handler middleware.
-
-  (fn [method]
-    (fn [tx & args]
-      (apply method tx args)))"
   [method-sym wrap]
   (let [method (resolve method-sym)
         wrapped-method (cond-> method
@@ -68,7 +62,7 @@
 
 (def ^:dynamic ^:private *stack-level* 0)
 
-(defn wrap-closing-fn
+(defn- wrap-closing-fn
   "`:closing` is a function receiving the same arguments as the wrapped
   method, but it is evaluated after the wrapped method.
 
@@ -104,14 +98,31 @@
             tx))))))
 
 (defn build
-  {:doc
-   (str "Expects a map of methods with :wrap and/or :closing
-  Ex:
-  {`dp/-add {:wrap add-wrapper}}"
-        "\n\n  "
-        (:doc (meta #'wrap-method))
-        "\n\n  "
-        (:doc (meta #'wrap-closing-fn)))}
+  "Expects a map of method symbols with a configuration map
+  Ex: {`dp/-add {:wrap ..., :closing ...}}
+
+  -----
+  `:wrap` is a function receiving a dresser method and returns a
+  wrapped method. Similar to web handler middleware.
+
+  (fn [method]
+    (fn [tx & args]
+      (apply method tx args)))
+
+  `:closing` is a function receiving the same arguments as the wrapped
+  method, but it is evaluated after the wrapped method.
+
+  (fn [tx & args] ...)
+
+  If multiple wrap layers exist, the closing functions across all the
+  layers are composed in such a way that the FIRST layer closing
+  function is evaluated LAST.
+
+  (-> dresser
+    (wrapper-1)
+    (wrapper-2)
+    (closing-2)
+    (closing-1))"
   [dresser method->wrap]
   (assert (db/dresser? dresser))
   (let [unexpected-symbols (seq (remove (set dp/dresser-symbols)
