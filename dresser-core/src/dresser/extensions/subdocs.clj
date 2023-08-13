@@ -77,8 +77,6 @@
                               _ (when doc-ref (delete-children! tx doc-ref))
                               _ (when doc-ref (remove-parent! tx doc-ref))]
                              tx))]
-     ;; :pre must be used, as :wrap could be modified by future
-     ;; wrappers and prevent the deletion.
      {`dp/-delete {:wrap (fn [method]
                            (fn [tx drawer id]
                              (-> tx
