@@ -90,7 +90,7 @@ Let's start by using a simple atom implementation:
 
 While most functions allow for retrieval or update of a single document, `fetch` and its derivatives allow for queries that return multiple documents.
 
-`fetch` is configured with those optional entries:
+`fetch` is configured with those optional keys:
 
 - `:only` returns only a subset of the documents.
 	The map provided under `:only` will be filled with the values from the fetched document.
@@ -349,7 +349,7 @@ Their purpose is to provide additional capabilities that will not only work on a
 The base Dressers don't have any support for schemas.
 Similar (better) capabilities should be added via extensions.
 
-For example, an extensions could leverage Malli to validate all the data going in and conform all the data coming out. Contrary to normal DB schemas, those specs could be reused elsewhere, such as in HTTP handlers.
+For example, an extension could leverage Malli to validate all the data going in and conform all the data coming out. Contrary to normal DB schemas, those specs could be reused elsewhere, such as in HTTP handlers.
 
 ## Todo:
 - Control automatic retries.
