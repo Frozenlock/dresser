@@ -125,17 +125,20 @@
 
 (ext/defext ttl
   [delay-between-delete-ms]
-  {:deps  [refs/keep-sync]
-   :init-fn #(db/with-system-drawers % [ttl-drawer])
+  {:deps         [refs/keep-sync]
+   :init-fn      #(db/with-system-drawers % [ttl-drawer])
    :wrap-configs (let [*dresser (atom nil)]
-                   {`dp/-start {:post (fn [dresser]
-                                        ;; TODO: replace by a proper scheduler?
-                                        (reset! *dresser dresser)
-                                        (future (while @*dresser
-                                                  (try (delete-expired! @*dresser)
-                                                       (catch Exception _e))
-                                                  (Thread/sleep delay-between-delete-ms)))
-                                        dresser)}
-                    `dp/-stop  {:pre (fn [dresser]
-                                       (reset! *dresser nil)
-                                       dresser)}})})
+                   {`dp/-start {:wrap (fn [start-method]
+                                        (fn [dresser]
+                                          (let [started-drs (start-method dresser)]
+                                            ;; TODO: replace by a proper scheduler?
+                                            (reset! *dresser started-drs)
+                                            (future (while @*dresser
+                                                      (try (delete-expired! @*dresser)
+                                                           (catch Exception _e))
+                                                      (Thread/sleep delay-between-delete-ms)))
+                                            started-drs)))}
+                    `dp/-stop  {:wrap (fn [stop-method]
+                                        (fn [dresser]
+                                          (reset! *dresser nil)
+                                          (stop-method dresser)))}})})
