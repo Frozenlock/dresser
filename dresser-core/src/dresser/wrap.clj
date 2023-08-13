@@ -53,11 +53,8 @@
   (let [method (resolve method-sym)
         wrapped-method (cond-> method
                          wrap wrap)]
-    (-> (fn [dresser & method-args]
-          (as-> (:source dresser) tx
-            (apply wrapped-method tx method-args)
-            (assoc dresser :source tx)))
-        (vary-meta merge (meta wrapped-method)))))
+    (fn [dresser & method-args]
+      (update dresser :source #(apply wrapped-method % method-args)))))
 
 (dp/defimpl -temp-data
   [dresser]
