@@ -3,7 +3,7 @@
             [dresser.protocols :as dp]
             [clojure.string :as str]))
 
-;; It's possible to wrap an Idresser implementation and intercept its
+;; It's possible to wrap a Dresser implementation and intercept its
 ;; methods before and after they are applied.
 
 ;; One crucial step is to open the transaction of the wrapped dresser
@@ -76,60 +76,18 @@
 
   (fn [method]
     (fn [tx & args]
-      (apply method tx args)))
-
-  `:pre` and `:post` receives all the arguments this particular method
-  would also receive, but the tx contains the pre-wrapped methods. In
-  other words, `:pre` and `:post` capture the current dresser's state
-  before any additional wrapper.
-
-  (fn [tx & args]
-    (do-something tx))
-
-
-  All temp data is immediately restored after the `:pre` and `:post`
-  steps as to not break consumers.
-
-  --------
-
-  A more advanced version of the wrappers is available with the '+'
-  suffix.  This will add `wrap-cfgs` as the first argument.
-
-  For example, `:wrap+` would expect the following:
-
-  (fn [wrap-cfgs method] ...))
-
-  And `:pre+`/`:post+`:
-  (fn [wrap-cfgs tx ...] ...)
-
-    wrap-cfgs contains:
-  - :tx-data-key
-
-  The data stored under this key is the only one that will survive
-  across the `:pre` and `:post` steps.  It will also be destroyed at
-  the end of the transaction.
-  "
-  [method-sym {:keys [post post+ pre pre+ wrap wrap+]} tx-data-key]
-  (assert (not (or (and post post+)
-                   (and pre pre+)
-                   (and wrap wrap+))))
+      (apply method tx args)))"
+  [method-sym {:keys [wrap wrap+]} tx-data-key]
+  (assert (not (or (and wrap wrap+))))
   (let [method (resolve method-sym)
         wrap-cfgs {:tx-data-key tx-data-key}
         wrap' (or (some-> wrap+ (partial wrap-cfgs))
                   wrap)
-        pre' (some-> (or (some-> pre+ (partial wrap-cfgs))
-                         pre)
-                     (wrap-temp-data tx-data-key))
-        post' (some-> (or (some-> post+ (partial wrap-cfgs))
-                          post)
-                      (wrap-temp-data tx-data-key))
         wrapped-method (or (when wrap' (wrap' method))
                            method)]
     (-> (fn [dresser & method-args]
           (cond-> (:source dresser)
-            pre' ((fn [tx] (apply pre' tx method-args)))
             true ((fn [tx] (apply wrapped-method tx method-args)))
-            post' ((fn [tx] (apply post' tx method-args)))
             true ((fn [tx] (assoc dresser :source tx)))))
         (vary-meta merge (meta wrapped-method)))))
 
@@ -168,15 +126,15 @@
 
 (defn build
   {:doc
-   (str "Expects a map of methods with :pre/:wrap/:post.
+   (str "Expects a map of methods with :wrap and/or :closing
   Ex:
-  {`dp/-add {:pre do-this-before-add}}"
+  {`dp/-add {:wrap add-wrapper}}"
         "\n\n  "
         (:doc (meta #'wrap-method)))}
-  [dresser method->pre-post-wrap]
+  [dresser method->wrap]
   (assert (db/dresser? dresser))
   (let [unexpected-symbols (seq (remove (set dp/dresser-symbols)
-                                        (keys method->pre-post-wrap)))
+                                        (keys method->wrap)))
         _ (when unexpected-symbols (throw (ex-info "Unexpected method symbols"
                                                    {:symbols unexpected-symbols})))
         tx-data-key (gensym "tx-data-")]
@@ -191,7 +149,7 @@
                           [sym (wrap-method sym {} tx-data-key)]))
 
                ;; User-provided wrapped method
-               (into {} (for [[sym cfgs] method->pre-post-wrap
+               (into {} (for [[sym cfgs] method->wrap
                               :let [closing (:closing cfgs)]]
                           [sym (-> (wrap-method sym cfgs tx-data-key)
                                    (wrap-closing-fn sym closing))]))

@@ -25,18 +25,18 @@
                           ;; handled.
                           (at/build)
                           (at/build)))
-          add-in-source-drawer (fn [i]
-                                 (fn [tx drawer data]
-                                   (db/add! tx drawer {:v i})))
           wrap-fn (fn [impl pre-k post-k]
                     ;; The wrappper adds pre-k and post-k document
                     ;; whenever the 'add' method is called
-                    (wrap/build impl {`dp/-add {:pre  (add-in-source-drawer pre-k)
-                                                :post (add-in-source-drawer post-k)}}))]
+                    (wrap/build impl {`dp/-add {:wrap (fn [add-method]
+                                                        (fn [tx drawer data]
+                                                          (db/tx-let [tx tx]
+                                                              [_ (db/add! tx drawer {:v pre-k})
+                                                               id (add-method tx drawer data)
+                                                               _ (db/add! tx drawer {:v post-k})]
+                                                            id)))}}))]
       (let [result (db/tx-> (wrap-fn (make-impl) :pre1 :post1)
-                     ;; The expected ID is '2', because pre-k document is added before
-                     (dt/is-> (db/add! :users {:v "User1"}) (= 2)
-                              "Pre/post shouldn't accidentally modify result")
+                     (dt/is-> (db/add! :users {:v "User1"}) (= 2))
                      (dt/is-> (db/tx-> (db/fetch :users {})
                                 (db/update-result #(mapv :v (sort-by :id %))))
                               (= [:pre1 "User1" :post1])))]
@@ -56,46 +56,12 @@
                           :pre1 :post2 :post1] ;wrap2
                 result (db/tx-> wrap2
                          ;; The expected ID is '5', because 4 documents should be added before
-                         (dt/is-> (db/add! :users {:v "User1"}) (= 5)
-                                  "Pre/post shouldn't modify result")
+                         (dt/is-> (db/add! :users {:v "User1"}) (= 5))
                          (dt/is-> (db/tx-> (db/fetch :users {})
                                     (db/update-result #(mapv :v (sort-by :id %))))
                                   (= expected)))]
             ;; Validate that the result outside the transaction is also correct.
             (is (= expected result)))))))
-
-  (testing "pre+, post+, wrap+ and tx-data-key"
-    (let [inc-in-tx-data (fn [tx tx-data-key]
-                           (db/update-temp-data tx update tx-data-key (fnil inc 0)))
-          count-steps (fn [{:keys [tx-data-key]} tx & _args]
-                        (inc-in-tx-data tx tx-data-key))
-          wrap-fn (fn [impl]
-                    (wrap/build
-                     impl
-                     ;; increment the tx-data-key field in pre, wrap and post
-                     {`dp/-add {:pre+  count-steps
-                                :wrap+ (fn [{:keys [tx-data-key]} method]
-                                         (fn [tx & args]
-                                           (let [tx (inc-in-tx-data tx tx-data-key)]
-                                             (-> (apply method tx args)
-                                                 ;; Make the key available outside the wrapper layer
-                                                 (db/update-temp-data assoc :tx-data-key tx-data-key)))))
-                                :post+ count-steps}}))]
-      (let [return (db/transact! (wrap-fn (dt/no-tx-reuse (dt/sequential-id (hm/build))))
-                                 (fn [tx]
-                                   (let [tx (db/add! tx :docs {:v "doc1"})
-                                         [tx id] (db/dr (db/add! tx :docs {:v "doc1"}))
-                                         _ (is (= 2 id))
-                                         {:keys [tx-data-key]} (db/temp-data tx)]
-                                     (is (= 6 (get (db/temp-data tx) tx-data-key))
-                                         "tx-data-field should survive across all steps")
-                                     tx))
-                                 {:result? false})
-            {:keys [tx-data-key]} (db/temp-data return)]
-        (assert tx-data-key)
-        (is (nil? (get (db/temp-data return) tx-data-key))
-            "tx-data-key field doesn't exist outside a transaction"))))
-
   (testing "closing"
     (let [impl (dt/no-tx-reuse (dt/sequential-id (hm/build)))
           dresser (-> impl
