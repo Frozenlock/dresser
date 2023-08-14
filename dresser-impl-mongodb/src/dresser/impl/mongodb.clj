@@ -134,7 +134,7 @@
 
 
 (defn- id->mid
-  ":id -> :_id"
+  "Updates the map by converting Dresser :id into MongoDB \"_id\"."
   [m]
   (if-let [id (:id m)]
     (-> (assoc m "_id" (encode id))
@@ -142,7 +142,7 @@
     m))
 
 (defn- mid->id
-  "\"_id\" -> :id"
+  "Updates the map by converting MongoDB \"_id\" into Dresser :id."
   [m]
   (if-let [id (get m "_id")]
     (-> (dissoc m :_id "_id")
