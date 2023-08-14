@@ -239,7 +239,7 @@
     (mc/delete-many db drawers-registry {:_id {:$in (map :_id expired)}})))
 
 (defn- rename-in-registry!
-  [{::keys [db session *cache] :as tx} drawer new-drawer]
+  [{:keys [db session *cache] :as tx} drawer new-drawer]
   (let [coll (drawer->coll [db session *cache] drawer)]
     (mc/find-one-and-update db
                             drawers-registry
@@ -259,11 +259,11 @@
   (update tx :post-tx-fns conj #(drop-expired-collections! db)))
 
 (dp/defimpl -rename-drawer
-  [{::keys [db session] :as tx} drawer new-drawer]
+  [{:keys [db session] :as tx} drawer new-drawer]
   (rename-in-registry! tx drawer new-drawer))
 
 (dp/defimpl -all-drawers
-  [{::keys [db session] :as tx}]
+  [{:keys [db session] :as tx}]
   (->> (mc/find db drawers-registry {} {:projection {:drawer 1}
                                         :session    session})
        (map (comp decode :drawer))
@@ -313,7 +313,7 @@
            (apply array-map)))
 
 (defn fetch
-  [{::keys [db session *cache] :as tx} drawer only limit where sort-config skip]
+  [{:keys [db session *cache] :as tx} drawer only limit where sort-config skip]
   (let [result (->> (mc/find db
                              (drawer->coll [db session *cache] drawer)
                              (prepare-where where)
@@ -336,11 +336,11 @@
          (db/with-result tx))))
 
 (dp/defimpl -fetch
-  [{::keys [db session] :as tx} drawer only limit where sort-config skip]
+  [{:keys [db session] :as tx} drawer only limit where sort-config skip]
   (fetch tx drawer only limit where sort-config skip))
 
 (dp/defimpl -fetch-count
-  [{::keys [db session *cache] :as dresser} drawer where]
+  [{:keys [db session *cache] :as dresser} drawer where]
   (->> (mc/count-documents db
                            (drawer->coll [db session *cache] drawer)
                            (prepare-where where)
@@ -349,7 +349,7 @@
 
 ;; MongoDB currently doesn't support '.drop()' inside a transaction.
 (dp/defimpl -drop
-  [{::keys [db session *cache] :as dresser} drawer]
+  [{:keys [db session *cache] :as dresser} drawer]
   ;; Clearing the cache must be first because we are not in a
   ;; transaction.
   (cw/evict *cache (dd/key drawer))
@@ -372,7 +372,7 @@
   (get dresser :data))
 
 (dp/defimpl -delete
-  [{::keys [db session *cache] :as tx} drawer id]
+  [{:keys [db session *cache] :as tx} drawer id]
   (mc/delete-one db
                  (drawer->coll [db session *cache] drawer)
                  (id->mid {:id id})
@@ -380,7 +380,7 @@
   (db/with-result tx id))
 
 (defn upsert
-  [{::keys [db session *cache] :as dresser} drawer data]
+  [{:keys [db session *cache] :as dresser} drawer data]
   (let [encoded (-> (id->mid data)
                     (encode))]
     (->> (mc/find-one-and-replace db
@@ -396,11 +396,11 @@
          (db/with-result dresser))))
 
 (dp/defimpl -upsert
-  [{::keys [db session] :as dresser} drawer data]
+  [{:keys [db session] :as dresser} drawer data]
   (upsert dresser drawer data))
 
 (defn upsert-many
-  [{::keys [db session *cache] :as dresser} drawer docs]
+  [{:keys [db session *cache] :as dresser} drawer docs]
   (mc/bulk-write db
                  (drawer->coll [db session *cache] drawer :upsert)
                  (for [doc docs
@@ -413,7 +413,7 @@
   (db/with-result dresser docs))
 
 (dp/defimpl -upsert-many
-  [{::keys [db session *cache] :as dresser} drawer docs]
+  [{:keys [db session *cache] :as dresser} drawer docs]
   (upsert-many dresser drawer docs))
 
 ;; transactionLifetimeLimitSeconds <-- might be useful in the future
@@ -422,14 +422,14 @@
   (if (:transact dresser)
     (f dresser)
     ;; When not already inside a transaction:
-    (let [dresser' (with-open [session (mcl/start-session (::client dresser))]
+    (let [dresser' (with-open [session (mcl/start-session (:client dresser))]
                      ;; TRANSACTIONS ARE ONLY ALLOWED ON REPLICA SETS?!?!
 
                      ;; Why not use transactionBody? Because it might
                      ;; automatically retry the transaction.
                      (.startTransaction session)
                      (try
-                       (let [dresser (f (assoc dresser :transact true ::session session))
+                       (let [dresser (f (assoc dresser :transact true :session session))
                              non-lazy (db/update-result dresser #(if (seq? %) (doall %) %))]
                          (.commitTransaction session)
                          non-lazy)
@@ -486,8 +486,8 @@
             (try
               (dt/test-impl f)
               (finally (doall (pmap (fn [dresser]
-                                      (do (.drop (::db dresser))
-                                          (.close (::client dresser))
+                                      (do (.drop (:db dresser))
+                                          (.close (:client dresser))
                                           (swap! *test-dressers (fn [ds]
                                                                   (remove #{dresser} ds)))))
                                     @*test-dressers)))))}
@@ -495,10 +495,10 @@
   ([m {:keys [db-name host port] :as db-configs}]
    (let [client (mcl/create (str "mongodb://" host ":" port))
          db (mcl/get-db client db-name)]
-     (vary-meta {::client     client
-                 ::db         db
-                 ::db-configs db-configs
-                 ::*cache (cw/lru-cache-factory {})}
+     (vary-meta {:client     client
+                 :db         db
+                 :db-configs db-configs
+                 :*cache (cw/lru-cache-factory {})}
                 merge
                 opt/optional-impl
                 (mongo-impl)
@@ -511,8 +511,8 @@
   (def aaa (build {:db-name "dresser_test_db"
                    :host    "127.0.0.1"
                    :port    27018}))
-  (do (.drop (::db aaa))
-      (.close (::client aaa))
+  (do (.drop (:db aaa))
+      (.close (:client aaa))
       ))
 
 (comment
