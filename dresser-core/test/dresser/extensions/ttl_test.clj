@@ -1,11 +1,11 @@
 (ns dresser.extensions.ttl-test
-  (:require [clojure.test :as t :refer [deftest use-fixtures are]]
+  (:require [clojure.test :as t :refer [are deftest is testing use-fixtures]]
             [dresser.base :as db]
             [dresser.extensions.durable-refs :as refs]
             [dresser.extensions.ttl :as ttl]
+            [dresser.impl.atom :as at]
             [dresser.impl.hashmap :as hm]
-            [dresser.test :as dt]
-            [dresser.impl.atom :as at])
+            [dresser.test :as dt])
   (:import [java.util Date]))
 
 (use-fixtures :once (dt/coverage-check ttl))
@@ -30,21 +30,29 @@
              tx (range n)))))
 
 (deftest time-utils
-  (are [x y] (= x y)
-    (ttl/secs 1) 1000
-    (ttl/mins 1) (* 1000 60)
-    (ttl/hours 1) (* 1000 60 60)
-    (ttl/days 1) (* 1000 60 60 24)
-    (ttl/weeks 1) (* 1000 60 60 24 7))
-  (with-redefs [ttl/now (fn
-                          ([] (Date. 10))
-                          ([ms-to-add] (ttl/add-ms (Date. 10) ms-to-add)))]
-    (are [x y] (= x (Date. (+ y 10)))
-      (ttl/now+secs 1) 1000
-      (ttl/now+mins 1) (* 1000 60)
-      (ttl/now+hours 1) (* 1000 60 60)
-      (ttl/now+days 1) (* 1000 60 60 24)
-      (ttl/now+weeks 1) (* 1000 60 60 24 7))))
+  (testing "Millisecs fn"
+    (are [x y] (= x y)
+      (ttl/secs 1) 1000
+      (ttl/mins 1) (* 1000 60)
+      (ttl/hours 1) (* 1000 60 60)
+      (ttl/days 1) (* 1000 60 60 24)
+      (ttl/weeks 1) (* 1000 60 60 24 7)))
+  (testing "Now + <duration>"
+    (with-redefs [ttl/now (fn
+                            ([] (Date. 10))
+                            ([ms-to-add] (ttl/add-ms (Date. 10) ms-to-add)))]
+      (are [x y] (= x (Date. (+ y 10)))
+        (ttl/now+secs 1) 1000
+        (ttl/now+mins 1) (* 1000 60)
+        (ttl/now+hours 1) (* 1000 60 60)
+        (ttl/now+days 1) (* 1000 60 60 24)
+        (ttl/now+weeks 1) (* 1000 60 60 24 7))))
+  (testing "Greater/smaller comparators"
+    (let [[small big] [0 10]]
+      (is (ttl/> (ttl/now+secs big) (ttl/now+secs small)))
+      (is (ttl/>= (ttl/now+secs big) (ttl/now+secs big)))
+      (is (ttl/< (ttl/now+secs small) (ttl/now+secs big)))
+      (is (ttl/<= (ttl/now+secs big) (ttl/now+secs big))))))
 
 (deftest upsert-expiration
   (db/tx-let [tx (test-dresser)]
