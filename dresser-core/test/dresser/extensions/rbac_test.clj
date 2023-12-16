@@ -1,10 +1,10 @@
 (ns dresser.extensions.rbac-test
   (:require [clojure.test :as t :refer [deftest testing use-fixtures]]
             [dresser.base :as db]
+            [dresser.extensions.durable-refs :as refs]
             [dresser.extensions.memberships :as mbr]
             [dresser.extensions.rbac :as rbac]
             [dresser.impl.hashmap :as hm]
-            [dresser.extensions.durable-refs :as refs]
             [dresser.test :as dt]))
 
 (use-fixtures :once (dt/coverage-check rbac))
@@ -178,6 +178,55 @@
         ;; It cannot 'escalate' its rights.
         (dt/is-> (mbr/upsert-group-member! grp2 usr1 [:owner])
                  (thrown-with-msg? clojure.lang.ExceptionInfo #"Missing permission"))))
+
+    (testing "Fetch"
+      (let [user1-data {:id "user1", :name "user1"}
+            user2-data {:id "user2", :name "user2"}
+            grp1-data {:id "grp1" :name "grp1"}
+            [dresser [user1-ref
+                      user2-ref
+                      grp1-ref]] (db/dr
+                                  (db/tx-let [tx (test-dresser) {:result? false}]
+                                      [user1-ref (refs/upsert! tx :users user1-data)
+                                       user2-ref (refs/upsert! tx :users user2-data)
+                                       grp1-ref (refs/upsert! tx :grps grp1-data)
+                                       _ (mbr/upsert-group-member! tx grp1-ref user1-ref [:reader])]
+                                    [user1-ref user2-ref grp1-ref]))]
+        (db/tx-> dresser
+          (dt/is-> (db/fetch :users {:where {:id (:id user1-data)}
+                                     :only  (keys user1-data)})
+                   (= [user1-data])
+                   "Sanity check, no rbac"))
+
+        ;; User1 can fetch itself and grp1
+        (db/tx-> (rbac/enforce-rbac dresser user1-ref)
+          (dt/is-> (db/fetch :users {:where {:id (:id user1-data)}
+                                     :only  (keys user1-data)})
+                   (= [user1-data])
+                   "User can fetch itself")
+          (dt/is-> (db/fetch :users {:where {:id (:id user2-data)}
+                                     :only  (keys user2-data)})
+                   (thrown-with-msg? clojure.lang.ExceptionInfo #"Missing permission")
+                   "Can't fetch without permission")
+          (dt/is-> (db/fetch :grps {:where {:id (:id grp1-data)}
+                                    :only  (keys grp1-data)})
+                   (= [grp1-data])
+                   "User can fetch grp with permission"))
+
+        ;; User2 can only fetch itself
+        (db/tx-> (rbac/enforce-rbac dresser user2-ref)
+          (dt/is-> (db/fetch :users {:where {:id (:id user1-data)}
+                                     :only  (keys user1-data)})
+                   (thrown-with-msg? clojure.lang.ExceptionInfo #"Missing permission")
+                   "Can't fetch without permission")
+          (dt/is-> (db/fetch :users {:where {:id (:id user2-data)}
+                                     :only  (keys user2-data)})
+                   (= [user2-data])
+                   "User can fetch itself")
+          (dt/is-> (db/fetch :grps {:where {:id (:id grp1-data)}
+                                    :only  (keys grp1-data)})
+                   (thrown-with-msg? clojure.lang.ExceptionInfo #"Missing permission")
+                   "Can't fetch without permission"))))
 
     (testing "Self modification"
       (let [user-data {:id "user1", :name "New user"}]

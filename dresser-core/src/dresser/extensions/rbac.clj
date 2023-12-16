@@ -3,7 +3,8 @@
             [dresser.extension :as ext]
             [dresser.extensions.durable-refs :as refs]
             [dresser.extensions.memberships :as mbr]
-            [dresser.protocols :as dp]))
+            [dresser.protocols :as dp]
+            [dresser.impl.hashmap :as hm]))
 
 ;; For maximum compatibility, permissions should always be the same.
 (def allowed-permissions #{:add :delete :read :write})
@@ -183,14 +184,13 @@
 (def ^:dynamic *skip-rbac* false)
 
 (defn- add-wrapper
-  [member-ref method-sym]
+  [member-ref method-sym permission]
   (fn [method]
     (fn [tx target-drawer data]
       (let [tx (if (or *skip-rbac*
                        (some #{target-drawer} (db/system-drawers tx)))
                  tx
                  (let [{:keys [adder-ref valid-drawers]} (::doc-adder (db/temp-data tx))
-                       permission :add
                        error-fn (fn [message]
                                   (ex-info message
                                            {:by            member-ref
@@ -209,43 +209,92 @@
         (-> (method tx target-drawer data)
             (post-add target-drawer))))))
 
-(defn- permission-wrapper
+
+;; The 'fetch' function is also peculiar; it needs to search through
+;; all the docs. To not break the function while still throwing in
+;; case of an unauthorized result, we allow a normal 'fetch' and then
+;; validate that each returned document can be read.
+(defn- fetch-wrapper
   [member-ref method-sym]
   (let [permission (method->permission method-sym)]
-    (condp = permission
-      -always nil
-      :add (add-wrapper member-ref method-sym)
-      (fn [method]
-        (fn [tx drawer & args]
-          (let [tx (if (or *skip-rbac*
-                           (some #{drawer} (db/system-drawers tx)))
-                     tx
-                     (binding [*skip-rbac* true]
-                       (let [id (first args)
-                             [tx grp-ref] (db/dr (refs/ref tx drawer id))
-                             error (ex-info "Missing permission"
-                                            {:by         member-ref
-                                             :method     (name method-sym)
-                                             :permission permission
-                                             :target     grp-ref
-                                             :type       ::permission})]
-                         (cond
-                           (= permission -never) (throw error)
+    (fn [method]
+      (fn [tx drawer only limit where sort skip]
+        (if (or *skip-rbac*
+                (some #{drawer} (db/system-drawers tx)))
+          ;; Skip rbac: normal method call
+          (method tx drawer only limit where sort skip)
 
-                           ;; Member can update itself if it exists
-                           (= member-ref grp-ref)
-                           (let [[tx id] (db/dr (db/get-at tx drawer id [:id]))]
-                             (if-not id
-                               (throw error)
-                               tx))
+          ;; rbac: first fetch the docs normally, making sure to include
+          ;; IDs in the results.
+          (let [?only-with-id (when (and only (not (:id only)))
+                                (assoc only :id true))
+                [tx1 docs] (db/dr (method tx drawer (or ?only-with-id only) limit where sort skip))
+                tx2 (reduce (fn [tx {:keys [id]}]
+                              (let [[tx grp-ref] (db/dr (refs/ref tx drawer id))
+                                    [tx pchain] (if (= member-ref grp-ref)
+                                                  [tx [:itself]] ; member can access itself
+                                                  (db/dr (permission-chain tx grp-ref permission member-ref)))]
+                                (if (empty? pchain)
+                                  (throw (ex-info "Missing permission"
+                                                  {:by         member-ref
+                                                   :method     (name method-sym)
+                                                   :permission permission
+                                                   :target     grp-ref
+                                                   :type       ::permission}))
+                                  tx)))
+                            tx1 docs)
 
-                           ;; Normal behavior for every other drawer
-                           :else
-                           (let [[tx pchain] (db/dr (permission-chain tx grp-ref permission member-ref))]
-                             (if (empty? pchain)
-                               (throw error)
-                               tx))))))]
-            (apply method tx drawer args)))))))
+                ;; Remove ID if not requested
+                docs (if ?only-with-id
+                       (for [doc docs]
+                         (hm/take-from doc only))
+                       docs)]
+            (db/with-result tx2 docs)))))))
+
+
+(defn- permission-wrapper
+  [member-ref method-sym]
+  (if (= method-sym `dp/-fetch)
+    (fetch-wrapper member-ref method-sym)
+    (let [permission (method->permission method-sym)]
+      ;; Dispatch by permission
+      (condp = permission
+        -always nil
+        :add (add-wrapper member-ref method-sym permission)
+
+        (fn [method]
+          (fn [tx drawer & args]
+            (let [tx (if (or *skip-rbac*
+                             (some #{drawer} (db/system-drawers tx)))
+                       tx
+                       (binding [*skip-rbac* true]
+                         (let [id (first args)
+                               [tx grp-ref] (db/dr (refs/ref tx drawer id))
+                               error (ex-info "Missing permission"
+                                              {:by         member-ref
+                                               :method     (name method-sym)
+                                               :permission permission
+                                               :target     grp-ref
+                                               :type       ::permission})]
+                           (cond
+                             (= permission -never) (throw error)
+
+                             ;; Member can update itself if it exists
+                             (= member-ref grp-ref)
+                             (let [[tx id] (db/dr (db/get-at tx drawer id [:id]))]
+                               (if-not id
+                                 (throw error)
+                                 tx))
+
+                             ;; Normal behavior for every other drawer
+                             :else
+                             (let [[tx pchain] (db/dr (permission-chain tx grp-ref permission member-ref))]
+                               (if (empty? pchain)
+                                 (throw error)
+                                 tx))))))]
+              (apply method tx drawer args))))
+
+        ))))
 
 
 (ext/defext enforce-rbac
