@@ -144,6 +144,13 @@
        d-ref (ref! tx drawer d-id)]
     (db/with-result tx d-ref)))
 
+(defn upsert!
+  [dresser drawer data]
+  (db/tx-let [tx dresser]
+      [{:keys [id]} (db/upsert! tx drawer data)
+       d-ref (ref! tx drawer id)]
+    (db/with-result tx d-ref)))
+
 
 ;; (defn- wrap-base-fn
 ;;   [f]
