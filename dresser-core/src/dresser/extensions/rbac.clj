@@ -3,8 +3,7 @@
             [dresser.extension :as ext]
             [dresser.extensions.durable-refs :as refs]
             [dresser.extensions.memberships :as mbr]
-            [dresser.protocols :as dp]
-            [dresser.impl.hashmap :as hm]))
+            [dresser.protocols :as dp]))
 
 ;; For maximum compatibility, permissions should always be the same.
 (def allowed-permissions #{:add :delete :read :write})
@@ -247,7 +246,7 @@
                 ;; Remove ID if not requested
                 docs (if ?only-with-id
                        (for [doc docs]
-                         (hm/take-from doc only))
+                         (dissoc doc :id))
                        docs)]
             (db/with-result tx2 docs)))))))
 
