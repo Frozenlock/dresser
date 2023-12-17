@@ -229,8 +229,9 @@
                                 (assoc only :id true))
                 [tx1 docs] (db/dr (method tx drawer (or ?only-with-id only) limit where sort skip))
                 tx2 (reduce (fn [tx {:keys [id]}]
-                              (let [[tx grp-ref] (db/dr (refs/ref tx drawer id))
-                                    [tx pchain] (if (= member-ref grp-ref)
+                              (let [[tx grp-ref] (db/dr (refs/ref! tx drawer id))
+                                    [tx pchain] (if (and (some? grp-ref)
+                                                         (= member-ref grp-ref))
                                                   [tx [:itself]] ; member can access itself
                                                   (db/dr (permission-chain tx grp-ref permission member-ref)))]
                                 (if (empty? pchain)
@@ -268,7 +269,7 @@
                        tx
                        (binding [*skip-rbac* true]
                          (let [id (first args)
-                               [tx grp-ref] (db/dr (refs/ref tx drawer id))
+                               [tx grp-ref] (db/dr (refs/ref! tx drawer id))
                                error (ex-info "Missing permission"
                                               {:by         member-ref
                                                :method     (name method-sym)
