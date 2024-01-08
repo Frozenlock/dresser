@@ -1,10 +1,11 @@
 (ns dresser.test
-  (:require [dresser.base :as db]
-            [dresser.protocols :as dp]
+  (:require [clojure.set :as set]
             [clojure.test :as t :refer [is testing]]
-            [dresser.test :as dt]
-            [clojure.set :as set]
-            [dresser.drawer :as dd]))
+            [dresser.base :as db]
+            [dresser.drawer :as dd]
+            [dresser.protocols :as dp]
+            [dresser.test :as dt])
+  (:import (java.util Date)))
 
 ;; Redefine via leiningen injection to activate the fixture.
 (def test-coverage? false)
@@ -603,6 +604,25 @@ time and a drawer-object the other half."
       ;; this should throw an exception.
       (is (= qty (count (db/fetch dresser @drawer1 {})))))))
 
+(defn test--types
+  [impl-f]
+  (testing "Types are correctly stored and retrieved"
+    (let [inst (Date.)
+          coll [1 "s" :k inst]
+          data {:vector  (vec coll)
+                :set     (set coll)
+                :list    (into '() coll)
+                :string  "abc"
+                :int     12
+                :float   12.2
+                :keyword :keyword
+                :inst    inst}]
+      (db/tx-let [tx (impl-f)]
+          [id (db/add! tx @drawer1 {:data data})
+           ret (db/fetch-by-id tx @drawer1 id)]
+        (is (= data (:data ret)))
+        tx))))
+
 (defn test--dont-blow-up-stack
   [impl-f]
   (time
@@ -619,6 +639,7 @@ time and a drawer-object the other half."
 (defn test-impl
   [impl-f]
   (test--lazyness impl-f)
+  (test--types impl-f)
   ;; (test--dont-blow-up-stack impl-f)
   (test--immutable-temp-data impl-f)
   (test--rename-drawer impl-f)
