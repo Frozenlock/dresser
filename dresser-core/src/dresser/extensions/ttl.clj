@@ -78,12 +78,20 @@
   [dresser inst]
   (db/tx-let [tx dresser]
       [id (db/gen-id! tx ttl-drawer)]
-      (str (ms inst) ":" id)))
+    (str (ms inst) ":" id)))
+
+(defn- ttl-id->inst
+  "Extracts the instant from the ttl-id."
+  [ttl-id]
+  (-> (re-find #"\d+" ttl-id)
+      read-string
+      (Date.)))
 
 (defn upsert-expiration!
   "Sets the document expiration and returns the ref.
   nil removes any existing expiration.  The expiration is the time
-  after which the document is *eventually* deleted."
+  after which the document is *eventually* deleted.
+  Returns the provided doc-ref."
   [dresser doc-ref inst]
   (assert (or (nil? inst)
               (inst? inst)))
@@ -97,6 +105,14 @@
               (db/upsert! ttl-drawer {:id new-ttl-id :target doc-ref})
               (refs/assoc-at! doc-ref [ttl-field] new-ttl-id)))
         (db/with-result doc-ref))))
+
+(defn get-expiration
+  "Returns the expiration #inst associated with doc-ref, or nil if it
+doesn't have any."
+  [dresser doc-ref]
+  (db/tx-let [tx dresser]
+      [?existing-ttl-id (refs/get-at tx doc-ref [ttl-field])]
+    (some-> ?existing-ttl-id ttl-id->inst)))
 
 ;; TODO: convert into multiple transactions.
 ;; Perhaps a batched lazy-fetch, fetching 500 items at a time?

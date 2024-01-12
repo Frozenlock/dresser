@@ -68,14 +68,25 @@
         (dt/is-> (ttl/upsert-expiration! d3 past) (= d3))
         (dt/is-> (ttl/upsert-expiration! d4 past) (= d4))
 
+        (dt/is-> (ttl/get-expiration d1) (= past))
+        (dt/is-> (ttl/get-expiration d2) (= past))
+        (dt/is-> (ttl/get-expiration d3) (= past))
+        (dt/is-> (ttl/get-expiration d4) (= past))
+
         ;; Update expirations
         (ttl/upsert-expiration! d1 past)
         (ttl/upsert-expiration! d2 past)
         (ttl/upsert-expiration! d3 now)
         (ttl/upsert-expiration! d4 future)
 
+        (dt/is-> (ttl/get-expiration d1) (= past))
+        (dt/is-> (ttl/get-expiration d2) (= past))
+        (dt/is-> (ttl/get-expiration d3) (= now))
+        (dt/is-> (ttl/get-expiration d4) (= future))
+
         ;; Remove the expiration
         (ttl/upsert-expiration! d1 nil)
+        (dt/is-> (ttl/get-expiration d1) nil?)
 
         (ttl/delete-expired!)
         (dt/is-> (refs/fetch-by-ref d1) some?)
