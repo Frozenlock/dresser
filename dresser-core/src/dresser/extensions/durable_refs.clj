@@ -226,8 +226,9 @@
     becomes
   (fn [dresser drawer doc-id ...] ...)"
   [f]
-  (fn [tx drawer id & args]
-    (let [[tx target-ref] (db/dr (ref! tx drawer id))]
+  (fn [dresser drawer id & args]
+    (db/tx-let [tx dresser]
+        [target-ref (ref! tx drawer id)]
       (apply f tx target-ref args))))
 ;;;;
 
