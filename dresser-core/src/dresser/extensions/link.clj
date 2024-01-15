@@ -74,7 +74,7 @@
             {:dresser (assoc-src dresser src2-key (db/with-result src2' nil))}))))))
 
 (dp/defimpl -transact
-  [dresser f result?]
+  [dresser f {:keys [result?]}]
   (if (:transact dresser)
     (f dresser)
     (let [src-keys (keys (:srcs dresser))
