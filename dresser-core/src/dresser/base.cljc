@@ -163,7 +163,7 @@
 
 (defmacro raw->
   "Same as `tx->`, but doesn't return the result when exiting the transaction.
-  Similar to (transact! dresser (fn [tx] body) false)"
+  Similar to (transact! dresser (fn [tx] body) {:result? false})"
   {:style/indent 1}
   [dresser & body]
   `(transact! ~dresser (fn [tx#] (tx-> tx# ~@body)) {:result? false}))
