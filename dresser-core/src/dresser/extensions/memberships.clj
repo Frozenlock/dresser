@@ -26,9 +26,9 @@
 
 (defn memberships-of-member
   "Returns all refs for which target is a member."
-  [dresser grp-ref]
+  [dresser member-ref]
   (db/tx-> dresser
-    (refs/get-at grp-ref [:drs_memberships :member-of])
+    (refs/get-at member-ref [:drs_memberships :member-of])
     (db/update-result #(or % []))))
 
 ;; The group
