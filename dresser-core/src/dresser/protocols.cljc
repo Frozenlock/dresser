@@ -18,7 +18,7 @@
               (into {} [~@(for [[m args] method->cfgs]
                             `[(symbol (resolve '~m)) '~args])]))))))
 
-;; metadata: :tx is a transaction method, :w is a write method.
+;; metadata: :tx is a transaction method, :w is a potential write method.
 
 (defpro DresserFundamental
   :extend-via-metadata true
