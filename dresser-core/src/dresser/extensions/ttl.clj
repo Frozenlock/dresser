@@ -48,28 +48,55 @@
 (defn now+weeks [x] (now (weeks x)))
 
 (defn >
-  "True if this is bigger than that."
-  [this that]
-  (pos? (compare this that)))
+  "True if each argument is bigger than the succeeding one."
+  ([x] true)
+  ([x y] (pos? (compare x y)))
+  ([x y & more]
+   (if (> x y)
+     (if (next more)
+       (recur y (first more) (next more))
+       (> y (first more)))
+     false)))
 
 (defn <
-  "True if this is smaller than that."
-  [this that]
-  (neg? (compare this that)))
+  "True if each argument is smaller than the succeeding one."
+  ([x] true)
+  ([x y] (neg? (compare x y)))
+  ([x y & more]
+   (if (< x y)
+     (if (next more)
+       (recur y (first more) (next more))
+       (< y (first more)))
+     false)))
+
 
 (defn >=
-  "True if this is bigger or equal to that."
-  [this that]
-  (let [ret (compare this that)]
-    (or (zero? ret)
-        (pos? ret))))
+  "True if each argument is bigger than or equal to the succeeding one."
+  ([x] true)
+  ([x y] (let [ret (compare x y)]
+           (or (zero? ret)
+               (pos? ret))))
+  ([x y & more]
+   (if (>= x y)
+     (if (next more)
+       (recur y (first more) (next more))
+       (>= y (first more)))
+     false)))
+
 
 (defn <=
-  "True if this is smaller or equal to that."
-  [this that]
-  (let [ret (compare this that)]
-    (or (zero? ret)
-        (pos? ret))))
+  "True if each argument is smaller than or equal to the succeeding one."
+  ([x] true)
+  ([x y] (let [ret (compare x y)]
+           (or (zero? ret)
+               (neg? ret))))
+  ([x y & more]
+   (if (<= x y)
+     (if (next more)
+       (recur y (first more) (next more))
+       (<= y (first more)))
+     false)))
+
 
 (defn- ttl-id
   "Generates an ID prefixed with the expiration time in ms.

@@ -48,11 +48,11 @@
         (ttl/now+days 1) (* 1000 60 60 24)
         (ttl/now+weeks 1) (* 1000 60 60 24 7))))
   (testing "Greater/smaller comparators"
-    (let [[small big] [0 10]]
-      (is (ttl/> (ttl/now+secs big) (ttl/now+secs small)))
-      (is (ttl/>= (ttl/now+secs big) (ttl/now+secs big)))
-      (is (ttl/< (ttl/now+secs small) (ttl/now+secs big)))
-      (is (ttl/<= (ttl/now+secs big) (ttl/now+secs big))))))
+    (let [[t1 t2 t3] [(ttl/now+secs 0) (ttl/now+secs 10) (ttl/now+secs 20)]]
+      (is (ttl/> t3 t2 t1))
+      (is (ttl/>= t3 t2 t2 t1))
+      (is (ttl/< t1 t2 t3))
+      (is (ttl/<= t1 t1 t2 t2)))))
 
 (deftest upsert-expiration
   (db/tx-let [tx (test-dresser)]
