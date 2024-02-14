@@ -13,9 +13,22 @@
             [mongo-driver-3.client :as mcl]
             [mongo-driver-3.collection :as mc]))
 
-;; TODO: add support for '.' and '$' in collection and key names.
-;; While docs with '.' in keys can be fetched, it breaks things for `get-at`.
-;; Best approach? https://stackoverflow.com/questions/12397118/mongodb-dot-in-key-name
+;; Support for '.' and '$' in collection and key names.  While docs
+;; with '.' in keys can be fetched, it breaks things for `get-at` if
+;; we don't escape the character.
+;; https://stackoverflow.com/questions/12397118/mongodb-dot-in-key-name
+
+(defn escape [s]
+  (str/replace s #"[~.$]"
+               { "~" "~~"
+                "."  "~p"
+                "$"  "~d"}))
+
+(defn unescape [s]
+  (str/replace s #"~~|~p|~d"
+               { "~~" "~"
+                 "~p" "."
+                 "~d" "$"}))
 
 (defn- qualified-ident-name
   "Returns the qualified name when possible, otherwise just the name."
@@ -24,12 +37,6 @@
                   (namespace x))]
     (str n "/" (name x))
     (name x)))
-
-(defn- mongo-dotted-path
-  "Given a list of keywords or strings, return a single
-   'mongo-dotted-path' with the dot notation."
-  [keywords]
-  (->> keywords (map qualified-ident-name) (str/join ".")))
 
 
 (def ^:private query-ops
@@ -101,17 +108,16 @@
                         ;; Mongo doesn't support much besides strings
                         ;; as keys. Serialize if necessary.
                         [(cond
-                           (coll? k) (str "drs_coll_" (pr-str k))
+                           (string? k) (escape k)
                            (keyword? k) (if (query-ops k)
                                           k
                                           (encode k))
-                           (number? k) (str "drs_num_" (pr-str k))
-                           (inst? k) (str "drs_inst_" (.getTime k))
-                           :else k)
+                           :else (str "drs:mdb:edn("
+                                      (escape (pr-str k)) ")"))
                          (encode v)]))
     (and (coll? x)
          (not (db/ops? x))) (encode-coll x)
-    (keyword? x) (str "drs_kw_" (qualified-ident-name x))
+    (keyword? x) (str "drs:mdb:kw(" (escape (qualified-ident-name x)) ")")
     :else x))
 
 (defn- decode
@@ -121,13 +127,11 @@
                         [(decode k)
                          (decode v)]))
     (coll? x) (decode-coll x)
-    (string? x) (if-let [[_ _drs xtype xname] (re-matches #"^(drs_)(.*)_(.*)" x)]
+    (string? x) (if-let [[a _drs xtype data] (re-matches #"^(drs:mdb:)(.*)\((.*)\)" x)]
                   (case xtype
-                    "kw" (keyword xname)
-                    "coll" (edn/read-string xname)
-                    "num" (edn/read-string xname)
-                    "inst" (edn/read-string xname))
-                  x)
+                    "edn" (edn/read-string (unescape data))
+                    "kw" (keyword (unescape data)))
+                  (unescape x))
     :else x))
 
 
@@ -271,7 +275,12 @@
 
 ;;; --------------------------
 
-
+(defn- mongo-dotted-path
+  "Given a list of keywords or strings, return a single
+   'mongo-dotted-path' with the dot notation."
+  [coll]
+  (->> (map #(if (string? %) (escape %) (encode %)) coll)
+       (str/join "." )))
 
 (defn- prepare-where
   [where]
@@ -319,7 +328,7 @@
                              (prepare-where where)
                              {:keywordize? false
                               :limit       limit
-                              :sort (prepare-sort sort-config)
+                              :sort        (prepare-sort sort-config)
                               :projection  (prepare-only only)
                               :session     session
                               :skip        skip})
