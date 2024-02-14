@@ -101,6 +101,17 @@
       (decode-fn encoded-coll)
       encoded-coll)))
 
+(defn- repeatable-unordered-coll
+  "For collections where order doesn't matter for equality, constructs a
+  new empty coll of the same type and inserts the sorted elements."
+  [coll]
+  (letfn [(new-coll [x]
+            (if (or (map? x)
+                    (set? x))
+              (into (empty x) (sort x))
+              x))]
+    (w/postwalk new-coll coll)))
+
 (defn- encode
   [x]
   (cond
@@ -113,7 +124,7 @@
                                           k
                                           (encode k))
                            :else (str "drs:mdb:edn("
-                                      (escape (pr-str k)) ")"))
+                                      (escape (pr-str (repeatable-unordered-coll k))) ")"))
                          (encode v)]))
     (and (coll? x)
          (not (db/ops? x))) (encode-coll x)
@@ -300,13 +311,13 @@
                 (-> (assoc m "_id" id)
                     (dissoc :id))
                 m)))
+           (encode)
            (w/postwalk #(if-not (map-entry? %)
                           %
                           (let [[k v] %]
                             (if (map? v)
                               %
-                              [k (if v 1 0)]))))
-           (encode)))
+                              [k (if v 1 0)]))))))
 
 (defn- prepare-sort
   [sort-config]
