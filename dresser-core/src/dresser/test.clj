@@ -245,19 +245,17 @@ time and a drawer-object the other half."
                (db/upsert! @drawer1 {:id :some-id})
                (db/fetch-by-id @drawer1 :some-id)))))
 
-    ;; TODO: should we accept map as keys?
-    ;; (testing "Maps as keys"
-    ;;   ;; Maps ordered differently. A naive serialization might miss
-    ;;   ;; this one and consider them 'not equal'.
-    ;;   (let [impl (impl-f)
-    ;;         m1 {{:a 1, :b 2} "map1"}
-    ;;         m2 {{:b 2, :a 1} "map2"}]
-    ;;     (db/tx-> impl
-    ;;       (db/add! :drawer m1)
-    ;;       (db/add! :drawer m2)
-    ;;       (is-> (db/fetch :drawer {:only {{:a 1, :b 2} :?}})
-    ;;             (= [m1 m2])))))
-    ))
+    (testing "Maps as keys"
+      ;; Maps ordered differently. A naive serialization might miss
+      ;; this one and consider them 'not equal'.
+      (let [impl (impl-f)
+            m1 {{:a 1, :b 2, :c #{"a" "b"}} "map1"}
+            m2 {{:b 2, :a 1, :c #{"b" "a"}} "map2"}]
+        (db/tx-> impl
+          (db/add! :drawer m1)
+          (db/add! :drawer m2)
+          (is-> (db/fetch :drawer {:only {{:a 1, :b 2, :c #{"a" "b"}} :?}})
+                (u= [m1 m2])))))))
 
 (defn test--upsert-many
   [impl-f]
