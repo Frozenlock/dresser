@@ -248,14 +248,42 @@ time and a drawer-object the other half."
     (testing "Maps as keys"
       ;; Maps ordered differently. A naive serialization might miss
       ;; this one and consider them 'not equal'.
-      (let [impl (impl-f)
-            m1 {{:a 1, :b 2, :c #{"a" "b"}} "map1"}
-            m2 {{:b 2, :a 1, :c #{"b" "a"}} "map2"}]
-        (db/tx-> impl
-          (db/add! :drawer m1)
-          (db/add! :drawer m2)
-          (is-> (db/fetch :drawer {:only {{:a 1, :b 2, :c #{"a" "b"}} :?}})
-                (u= [m1 m2])))))))
+      (testing "only keywords in maps"
+        (let [impl (impl-f)
+              m1 {{:a 1, :b 2, :c #{"a" "b"}} "map1"}
+              m2 {{:b 2, :a 1, :c #{"b" "a"}} "map2"}]
+          (db/tx-> impl
+            (db/add! :drawer m1)
+            (db/add! :drawer m2)
+            (is-> (db/fetch :drawer {:only {{:a 1, :b 2, :c #{"a" "b"}} :?}})
+                  (u= [m1 m2])))))
+      (testing "heterogeneous keys"
+        (let [impl (impl-f)
+              m1 {{[:a] 1, "b" 2, #{:c 3} 3, ::d 4} "map1"}
+              m2 {{::d 4, #{3 :c} 3, [:a] 1, "b" 2} "map2"}]
+          (db/tx-> impl
+            (db/add! :drawer m1)
+            (db/add! :drawer m2)
+            (is-> (db/fetch :drawer {:only {{[:a] 1, "b" 2, #{:c 3} 3, ::d 4} :?}})
+                  (u= [m1 m2])))))
+      (testing "different map types"
+        (let [impl (impl-f)
+              m1 {{:a 1} "map1"}
+              m2 {(sorted-map :a 1) "map2"}]
+          (db/tx-> impl
+            (db/add! :drawer m1)
+            (db/add! :drawer m2)
+            (is-> (db/fetch :drawer {:only {{:a 1} :?}})
+                  (u= [m1 m2])))))
+      (testing "metadata doesn't mess equality"
+        (let [impl (impl-f)
+              m1 {{:a 1} "map1"}
+              m2 {(with-meta {:a 1} {:some :meta}) "map2"}]
+          (db/tx-> impl
+            (db/add! :drawer m1)
+            (db/add! :drawer m2)
+            (is-> (db/fetch :drawer {:only {{:a 1} :?}})
+                  (u= [m1 m2]))))))))
 
 (defn test--upsert-many
   [impl-f]
