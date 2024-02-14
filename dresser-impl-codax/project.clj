@@ -5,7 +5,8 @@
             :url  "https://www.eclipse.org/legal/epl-2.0/"}
   :dependencies [[org.clojure/clojure "1.11.1"]
                  [org.clojars.frozenlock/dresser "0.1.0-SNAPSHOT"]
-                 [codax "1.4.0"]]
+                 [codax "1.4.0"]
+                 [io.replikativ/hasch "0.3.94"]]
   :plugins [[lein-modules "0.3.11"]]
   :test-paths ["src" "test"]
   :repl-options {:init-ns dresser.impl.codax})
