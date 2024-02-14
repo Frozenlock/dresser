@@ -283,7 +283,17 @@ time and a drawer-object the other half."
             (db/add! :drawer m1)
             (db/add! :drawer m2)
             (is-> (db/fetch :drawer {:only {{:a 1} :?}})
-                  (u= [m1 m2]))))))))
+                  (u= [m1 m2]))))))
+
+    (testing "Sets as keys"
+      (let [impl (impl-f)
+            m1 {#{"a" :b {:a 1} [10]} "map1"}
+            m2 {(with-meta #{{:a 1}, :b, [10], "a"} {:some :meta}) "map2"}]
+        (db/tx-> impl
+          (db/add! :drawer m1)
+          (db/add! :drawer m2)
+          (is-> (db/fetch :drawer {:only {#{"a" :b {:a 1} [10]} :?}})
+                (u= [m1 m2])))))))
 
 (defn test--upsert-many
   [impl-f]
