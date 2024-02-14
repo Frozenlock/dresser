@@ -4,8 +4,11 @@
             [dresser.drawer :as dd]
             [dresser.impl.hashmap :as hm]
             [dresser.impl.optional :as opt]
+            [dresser.impl.pathwise :as pathwise]
             [dresser.protocols :as dp]
             [dresser.test :as dt]))
+
+pathwise/side-effect
 
 ;;; There are 2 different transaction types that need to be handled in
 ;;; this ns: the dresser transaction (tx) and the codax transaction
