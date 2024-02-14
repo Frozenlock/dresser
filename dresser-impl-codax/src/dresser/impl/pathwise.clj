@@ -55,7 +55,10 @@
                 ; maps
                 clojure.lang.PersistentArrayMap
                 clojure.lang.PersistentHashMap
-                clojure.lang.PersistentTreeMap]
+                clojure.lang.PersistentTreeMap
+                ; sets
+                clojure.lang.PersistentHashSet
+                clojure.lang.PersistentTreeSet]
   (fn commutative-coll-encoder [m]
     (nippy/freeze-to-string (freezable-commutative-coll m)
                             {:incl-metadata? false}))
