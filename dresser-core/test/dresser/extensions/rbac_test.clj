@@ -1,5 +1,5 @@
 (ns dresser.extensions.rbac-test
-  (:require [clojure.test :as t :refer [deftest testing use-fixtures]]
+  (:require [clojure.test :as t :refer [deftest testing use-fixtures is]]
             [dresser.base :as db]
             [dresser.extensions.durable-refs :as refs]
             [dresser.extensions.memberships :as mbr]
@@ -31,6 +31,28 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(deftest missing-permissions
+  (let [request-everything {:read :?}
+        request-username {:read {:username :?}}
+        request-address-street {:read {:address {:street :?}}}]
+    (testing "All read allowed"
+      (let [perms {:read true}]
+        (is (empty? (rbac/missing-permissions perms request-everything)))
+        (is (empty? (rbac/missing-permissions perms request-username)))
+        (is (empty? (rbac/missing-permissions perms request-address-street)))))
+
+    (testing "Single top field"
+      (let [perms {:read {:username true}}]
+        (is (not-empty (rbac/missing-permissions perms request-everything)))
+        (is (empty? (rbac/missing-permissions perms request-username)))
+        (is (not-empty (rbac/missing-permissions perms request-address-street)))))
+
+    (testing "Single nested field"
+      (let [perms {:read {:address {:street true}}}]
+        (is (not-empty (rbac/missing-permissions perms request-everything)))
+        (is (not-empty (rbac/missing-permissions perms request-username)))
+        (is (empty? (rbac/missing-permissions perms request-address-street)))))))
+
 
 (deftest permission-chain
   (let [dresser (test-dresser)
@@ -38,43 +60,48 @@
         [p1 usr1 usr2 grp1 grp2] (db/result dresser)]
     (db/tx-> dresser
       (dt/testing-> "Direct permission"
-        (rbac/set-roles-permissions! p1 {:owner [:read :write]})
+        (rbac/set-roles-permissions! p1 {:owner {:read true
+                                                 :write true}})
 
         (mbr/upsert-group-member! p1 grp1 [:owner])
-        (dt/is-> (rbac/permission-chain p1 :write grp1) (= [grp1]))
+        (dt/is-> (rbac/permission-chain p1 {:write true} grp1) (= [grp1]))
 
         (mbr/upsert-group-member! p1 grp1 [:visitor])  ; <- undefined role
-        (dt/is-> (rbac/permission-chain p1 :write grp1) (= [])))
+        (dt/is-> (rbac/permission-chain p1 {:write true} grp1) (= [])))
 
       (dt/testing-> "Indirect permission"
-        (rbac/set-roles-permissions! p1 {:owner [:read :write]})
+        (rbac/set-roles-permissions! p1 {:owner {:read  true
+                                                 :write true}})
         ;; grp1 is owner of p1
         (mbr/upsert-group-member! p1 grp1 [:owner])
-        (dt/is-> (rbac/permission-chain p1 :write grp1) (= [grp1]))
+        (dt/is-> (rbac/permission-chain p1 {:write true} grp1) (= [grp1]))
 
         ;; grp2 is admin of grp1.
         ;; Different roles (owner vs admin) to validate we use permissions, not roles.
         (mbr/upsert-group-member! grp1 grp2 [:admin])
-        (dt/is-> (rbac/permission-chain p1 :write grp2) (= [grp2 grp1]))
+        (dt/is-> (rbac/permission-chain p1 {:write true} grp2) (= [grp2 grp1]))
 
         ;; usr1 can READ, but not write in grp2
         (mbr/upsert-group-member! grp2 usr1 [:reader])
-        (dt/is-> (rbac/permission-chain p1 :read usr1) (= [usr1 grp2 grp1]))
-        (dt/is-> (rbac/permission-chain p1 :write usr1) (= []))
+        (dt/is-> (rbac/permission-chain p1 {:read true} usr1) (= [usr1 grp2 grp1]))
+        (dt/is-> (rbac/permission-chain p1 {:write true} usr1) (= []))
 
         ;; Let's fix that by giving usr1 the :admin role.
         (mbr/upsert-group-member! grp2 usr1 [:admin :reader])
-        (dt/is-> (rbac/permission-chain p1 :write usr1) (= [usr1 grp2 grp1]))))
+        (dt/is-> (rbac/permission-chain p1 {:write true} usr1) (= [usr1 grp2 grp1]))))
 
     (db/tx-> dresser
       (dt/testing-> "Circular dependencies"
         ;; Set roles for p1 and add grp1 as a member of p1
-        (rbac/set-roles-permissions! p1 {:manager [:read :write]})
+        (rbac/set-roles-permissions! p1 {:manager {:read true
+                                                   :write true}})
         (mbr/upsert-group-member! p1 grp1 [:manager])
 
         ;; Set roles for grp1 and grp2
-        (rbac/set-roles-permissions! grp1 {:manager [:read :write]})
-        (rbac/set-roles-permissions! grp2 {:manager [:read :write]})
+        (rbac/set-roles-permissions! grp1 {:manager {:read  true
+                                                     :write true}})
+        (rbac/set-roles-permissions! grp2 {:manager {:read  true
+                                                     :write true}})
 
         ;; Add usr1 to grp1 and usr2 to grp2
         (mbr/upsert-group-member! grp1 usr1 [:manager])
@@ -82,13 +109,13 @@
 
         ;; Add grp2 as a member of grp1 and test permissions for usr1
         (mbr/upsert-group-member! grp1 grp2 [:manager])
-        (dt/is-> (rbac/permission-chain p1 :read usr1) (= [usr1 grp1]))
+        (dt/is-> (rbac/permission-chain p1 {:read true} usr1) (= [usr1 grp1]))
 
         ;; Add grp1 as a member of grp2 and test permissions for usr1
         ;; This creates a circular dependency, but it should not affect the permission chain.
         (mbr/upsert-group-member! grp2 grp1 [:manager])
-        (dt/is-> (rbac/permission-chain p1 :read usr1) (= [usr1 grp1]))
-        (dt/is-> (rbac/permission-chain p1 :wrong-permission usr1) (= []))))))
+        (dt/is-> (rbac/permission-chain p1 {:read true} usr1) (= [usr1 grp1]))
+        (dt/is-> (rbac/permission-chain p1 {:wrong-permission true} usr1) (= []))))))
 
 
 (deftest guest-roles
@@ -98,12 +125,12 @@
     (db/tx-> dresser
       (dt/testing-> "Direct permission"
         ;; Initially, nobody can write in grp1.
-        (dt/is-> (rbac/permission-chain grp1 :write usr1) (= []))
+        (dt/is-> (rbac/permission-chain grp1 {:write :?} usr1) (= []))
         ;; But once one of the guest roles is 'admin', everybody can.
         (rbac/set-guest-roles! grp1 [:admin])
-        (dt/is-> (rbac/permission-chain grp1 :write usr1) (= [usr1]))
-        (dt/is-> (rbac/permission-chain grp1 :write usr2) (= [usr2]))
-        (dt/is-> (rbac/permission-chain grp1 :write grp1) (= [grp1])))
+        (dt/is-> (rbac/permission-chain grp1 {:write :?} usr1) (= [usr1]))
+        (dt/is-> (rbac/permission-chain grp1 {:write :?} usr2) (= [usr2]))
+        (dt/is-> (rbac/permission-chain grp1 {:write :?} grp1) (= [grp1])))
 
       (dt/testing-> "Indirect permission"
         (rbac/set-guest-roles! grp1 nil) ; reset guest roles
@@ -113,22 +140,22 @@
         (mbr/upsert-group-member! grp2 usr1 nil)
         (mbr/upsert-group-member! grp2 usr2 [:admin])
         ;; grp2 is the broken link for usr1
-        (dt/is-> (rbac/permission-chain p1 :read usr1) (= []))
-        (dt/is-> (rbac/permission-chain p1 :read usr2) (= [usr2 grp2 grp1]))
+        (dt/is-> (rbac/permission-chain p1 {:read :?} usr1) (= []))
+        (dt/is-> (rbac/permission-chain p1 {:read :?} usr2) (= [usr2 grp2 grp1]))
 
         ;; Even if usr1 was never officially set as a member of grp2,
         ;; it can act as a guest in it.
         (rbac/set-guest-roles! grp2 [:reader])
-        (dt/is-> (rbac/permission-chain p1 :read usr1) (= [usr1 grp2 grp1]))
-        (dt/is-> (rbac/permission-chain p1 :write usr1) (= []) ":reader guest can't write")
-        (dt/is-> (rbac/permission-chain p1 :write usr2) (= [usr2 grp2 grp1]))
+        (dt/is-> (rbac/permission-chain p1 {:read :?} usr1) (= [usr1 grp2 grp1]))
+        (dt/is-> (rbac/permission-chain p1 {:write :?} usr1) (= []) ":reader guest can't write")
+        (dt/is-> (rbac/permission-chain p1 {:write :?} usr2) (= [usr2 grp2 grp1]))
 
         ;; The permission chain is shortened if grp1 itself accepts guests.
         (rbac/set-guest-roles! grp1 [:reader])
-        (dt/is-> (rbac/permission-chain p1 :read usr1) (= [usr1 grp1]))
-        (dt/is-> (rbac/permission-chain p1 :write usr1) (= []) ":reader guest can't write")
-        (dt/is-> (rbac/permission-chain p1 :read usr2) (= [usr2 grp1]))
-        (dt/is-> (rbac/permission-chain p1 :write usr2) (= [usr2 grp2 grp1]))))))
+        (dt/is-> (rbac/permission-chain p1 {:read :?} usr1) (= [usr1 grp1]))
+        (dt/is-> (rbac/permission-chain p1 {:write :?} usr1) (= []) ":reader guest can't write")
+        (dt/is-> (rbac/permission-chain p1 {:read :?} usr2) (= [usr2 grp1]))
+        (dt/is-> (rbac/permission-chain p1 {:write :?} usr2) (= [usr2 grp2 grp1]))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -138,7 +165,8 @@
         dresser (db/raw-> dresser (add-groups! 5))
         [p1 usr1 usr2 grp1 grp2] (db/result dresser)
         dresser (db/raw-> dresser
-                  (rbac/set-roles-permissions! grp1 {:owner [:read :write]})
+                  (rbac/set-roles-permissions! grp1 {:owner {:read true
+                                                             :write true}})
                   (mbr/upsert-group-member! grp1 usr1 [:owner]))]
     (db/tx-> (rbac/enforce-rbac dresser usr1) ; wrap the dresser for "usr1"
       (dt/testing-> "Basic operations"

@@ -14,29 +14,100 @@
 ;; same permission.
 
 ;; Nevertheless, a few roles are always present to reduce boilerplate.
-(def default-roles {mbr/role-admin  [:add :delete :read :write]
-                    mbr/role-editor [:read :write]
-                    mbr/role-reader [:read]})
 
+(def default-roles {mbr/role-admin {:add    true
+                                    :delete true
+                                    :read   true
+                                    :write  true}
+
+                    mbr/role-editor {:read  true
+                                     :write true}
+
+                    mbr/role-reader {:read true}
+                    mbr/role-guest  {}})
+
+
+
+(defn missing-permissions
+  "Generates a map of missing permissions for a request based on a given
+   permissions map. It recursively traverses the request, identifying
+   keys and paths allowed by the permissions map, and marking as nil
+   those that are not permitted.
+
+  Parameters:
+  - perm-map: A map with permissions, where keys correspond to request map keys and values
+    indicate permission (true for allowed, map for nested permissions).
+  - request: The request map to be analyzed against the perm-map.
+
+  Returns:
+  A map representing the structure of the request with only the paths
+  where permissions are missing marked with nil, indicating precisely
+  where permissions are lacking."
+  [perm-map request]
+  (letfn [(find-missing [p-map r-map]
+            (reduce (fn [acc [k v]]
+                      (let [p-val (get p-map k)]
+                        (cond
+                          ;; If permission is explicitly true, the key is permitted
+                          (true? p-val) acc
+
+                          ;; If both perm and request values are maps, check for nested missing permissions
+                          (and (map? p-val) (map? v))
+                          (let [nested-missing (find-missing p-val v)]
+                            (if (not-empty nested-missing)
+                              (assoc acc k nested-missing)))
+
+                          ;; Key is present in request but not in permissions or not true
+                          :else (assoc acc k nil))))
+                    {} r-map))]
+    (find-missing perm-map request)))
+
+
+(comment
+ (defn get-permissions-for-path
+   "Accumulates permissions for a specific subfield path within a permissions map, considering inherited permissions.
+  Permissions are organized by action type at the top level (e.g., :read, :write), and it's assumed that if a permission
+  is not explicitly set to true, it defaults to false.
+
+  Parameters:
+  - permissions: The top-level permissions map organized by action types.
+  - path: A vector representing the path to the subfield for which permissions are sought.
+
+  Returns:
+  - An accumulated permissions map for the specified subfield path for each action type."
+   [permissions path]
+   (reduce (fn [acc action-type]
+             (let [action-perms (get permissions action-type)
+                   result (reduce (fn [current-perms key]
+                                    (if-let [next-level (get current-perms key)]
+                                      next-level
+                                      current-perms))
+                                  action-perms
+                                  path)]
+               (if (or (boolean result) (map? result))
+                 (assoc acc action-type true)
+                 acc)))
+           {}
+           (keys permissions))))
 
 ;; ----------------
 ;; This section allows for each document to define its own roles. Is
 ;; it really necessary?
-(defn- assert-role->permissions
-  "Throws on unexpected permission"
-  [role->permissions]
-  (assert (map? role->permissions))
-  (doseq [[role permissions] role->permissions]
-    (doseq [permission permissions]
-      (when (not (some #{permission} allowed-permissions))
-        (throw (ex-info "Unkown permission"
-                        {:permission permission}))))))
+;; (defn- assert-role->permissions
+;;   "Throws on unexpected permission"
+;;   [role->permissions]
+;;   (assert (map? role->permissions))
+;;   (doseq [[role permissions] role->permissions]
+;;     (doseq [permission permissions]
+;;       (when (not (some #{permission} allowed-permissions))
+;;         (throw (ex-info "Unkown permission"
+;;                         {:permission permission}))))))
 
 (defn set-roles-permissions!
   "Sets roles inside the group.
   Returns the roles."
   [dresser grp-ref role->permissions]
-  (assert-role->permissions role->permissions)
+  ;(assert-role->permissions role->permissions)
   (db/tx-> dresser
     (refs/assoc-at! grp-ref [:drs_rbac :role->perms]
                     (dissoc role->permissions
@@ -55,7 +126,7 @@
 (defn- members-with-permission
   "Returns a collection of member refs, or, if the permission is matched
   with a `guest-role` stored in the grp document, returns [::any]. "
-  [dresser grp-ref permission]
+  [dresser grp-ref request-map]
   (db/tx-let [tx dresser]
       [{:keys [drs_rbac]} (refs/fetch-by-ref tx grp-ref
                                              {:only
@@ -63,7 +134,7 @@
                                                           :role->perms]}})
        {:keys [guest-roles role->perms]} drs_rbac
        roles-w-perm (for [[role permissions] (merge role->perms default-roles)
-                          :when (some #{permission} permissions)]
+                          :when (empty? (missing-permissions permissions request-map))]
                       role)]
     (if (some (set guest-roles) roles-w-perm)
       (db/with-result tx [::any])
@@ -77,9 +148,10 @@
   The first item in the collection is the provided ref and the last is
   the ref that has the permission for grp-ref.
   Ex: usr1 :write for Acme -> [urs1 shell-company acme-owners]"
-  [dresser grp-ref permission member-ref]
+  [dresser grp-ref request member-ref]
   (db/tx-let [tx dresser]
-      [valid-members (members-with-permission tx grp-ref permission)]
+    [grp-drawer-key (refs/drawer-key tx grp-ref)
+     valid-members (members-with-permission tx grp-ref request)]
     (if (or (some #{member-ref ::any} valid-members)) ; Found member?
       (db/with-result tx [member-ref])
       ;; If the member isn't found directly, recursively check the groups
@@ -87,7 +159,7 @@
         (if (empty? refs)
           (db/with-result tx [])
           (let [ref (first refs)
-                [tx chain] (db/dr (permission-chain tx ref permission member-ref))]
+                [tx chain] (db/dr (permission-chain tx ref request member-ref))]
             (if (seq chain)
               (db/with-result tx (conj chain ref))
               (recur tx (next refs)))))))))
@@ -201,7 +273,7 @@
                      (not adder-ref) (throw (error-fn "Missing document adder reference"))
                      (not (some #{target-drawer} valid-drawers)) (throw (error-fn "Drawer not allowed"))
                      :else (let [[tx pchain] (binding [*skip-rbac* true] ; for other wrappers
-                                               (db/dr (permission-chain tx adder-ref permission member-ref)))]
+                                               (db/dr (permission-chain tx adder-ref {permission true} member-ref)))]
                              (if (empty? pchain)
                                (throw (error-fn "Missing permission"))
                                tx)))))]
@@ -233,7 +305,8 @@
                                     [tx pchain] (if (and (some? grp-ref)
                                                          (= member-ref grp-ref))
                                                   [tx [:itself]] ; member can access itself
-                                                  (db/dr (permission-chain tx grp-ref permission member-ref)))]
+                                                  (db/dr (permission-chain tx grp-ref {permission (or only true)}
+                                                                           member-ref)))]
                                 (if (empty? pchain)
                                   (throw (ex-info "Missing permission"
                                                   {:by         member-ref
@@ -275,9 +348,11 @@
                                                :method     (name method-sym)
                                                :permission permission
                                                :target     grp-ref
-                                               :type       ::permission})]
+                                               :type       ::permission})
+                               _ (when (= permission -never)
+                                   (throw error))]
+
                            (cond
-                             (= permission -never) (throw error)
 
                              ;; Member can update itself if it exists
                              (= member-ref grp-ref)
@@ -288,13 +363,15 @@
 
                              ;; Normal behavior for every other drawer
                              :else
-                             (let [[tx pchain] (db/dr (permission-chain tx grp-ref permission member-ref))]
+                             (let [[tx pchain] (db/dr (permission-chain tx grp-ref {permission true} member-ref))]
                                (if (empty? pchain)
                                  (throw error)
                                  tx))))))]
               (apply method tx drawer args))))
 
         ))))
+
+
 
 
 (ext/defext enforce-rbac
