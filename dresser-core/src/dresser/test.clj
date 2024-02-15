@@ -246,9 +246,8 @@ time and a drawer-object the other half."
                (db/fetch-by-id @drawer1 :some-id)))))
 
     (testing "Maps as keys"
-      ;; Maps ordered differently. A naive serialization might miss
-      ;; this one and consider them 'not equal'.
-      (testing "only keywords in maps"
+      (testing "only keywords as keys"
+        ;; A naive serialization might miss the different key ordering
         (let [impl (impl-f)
               m1 {{:a 1, :b 2, :c #{"a" "b"}} "map1"}
               m2 {{:b 2, :a 1, :c #{"b" "a"}} "map2"}]
