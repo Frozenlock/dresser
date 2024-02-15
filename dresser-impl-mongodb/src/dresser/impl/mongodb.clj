@@ -10,6 +10,7 @@
             [dresser.impl.optional :as opt]
             [dresser.protocols :as dp]
             [dresser.test :as dt]
+            [hasch.core :as hashc]
             [mongo-driver-3.client :as mcl]
             [mongo-driver-3.collection :as mc]))
 
@@ -101,16 +102,23 @@
       (decode-fn encoded-coll)
       encoded-coll)))
 
-(defn- repeatable-unordered-coll
-  "For collections where order doesn't matter for equality, constructs a
-  new empty coll of the same type and inserts the sorted elements."
+
+
+(defn- hash-compare
+  [a b]
+  (compare (hashc/b64-hash a)
+           (hashc/b64-hash b)))
+
+(defn- ordered-commutative-coll
+  "For collections where order doesn't matter for equality, returns a
+  sorted version that supports heterogeneous elements."
   [coll]
-  (letfn [(new-coll [x]
-            (if (or (map? x)
-                    (set? x))
-              (into (empty x) (sort x))
-              x))]
-    (w/postwalk new-coll coll)))
+  (let [f (fn [x]
+            (cond
+              (and (map? x) (not (record? x))) (into (sorted-map-by hash-compare) x)
+              (set? x) (into (sorted-set-by hash-compare) x)
+              :else x))]
+    (w/postwalk f coll)))
 
 (defn- encode
   [x]
@@ -124,7 +132,7 @@
                                           k
                                           (encode k))
                            :else (str "drs:mdb:edn("
-                                      (escape (pr-str (repeatable-unordered-coll k))) ")"))
+                                      (escape (pr-str (ordered-commutative-coll k))) ")"))
                          (encode v)]))
     (and (coll? x)
          (not (db/ops? x))) (encode-coll x)
