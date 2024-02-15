@@ -23,13 +23,13 @@
     (db/tx-> dresser
       ;; No relations
       (dt/is-> (mbr/members-of-group p1) (= []))
-      (dt/is-> (mbr/memberships-of-member usr1) (= []))
-      (dt/is-> (mbr/memberships-of-member usr2) (= []))
+      (dt/is-> (mbr/memberships-of-member usr1) empty?)
+      (dt/is-> (mbr/memberships-of-member usr2) empty?)
       ;; Add a member with roles
       (dt/is-> (mbr/upsert-group-member! p1 usr1 [:admin :editor]) (= p1))
       (dt/is-> (mbr/members-of-group p1) (= [usr1]))
       (dt/is-> (mbr/memberships-of-member usr1) (= [p1]))
-      (dt/is-> (mbr/memberships-of-member usr2) (= []))
+      (dt/is-> (mbr/memberships-of-member usr2) empty?)
       ;; Another admin, check that urs1 is still there.
       (dt/is-> (mbr/upsert-group-member! p1 usr2 [:admin]) (= p1))
       (dt/is-> (mbr/members-of-group p1) (= [usr1 usr2]))
@@ -43,7 +43,7 @@
       ;; No roles, should remove from group
       (dt/is-> (mbr/upsert-group-member! p1 usr1 []) (= p1))
       (dt/is-> (mbr/members-of-group p1) (= [usr2]))
-      (dt/is-> (mbr/memberships-of-member usr1) (= []))
+      (dt/is-> (mbr/memberships-of-member usr1) empty?)
       (dt/is-> (mbr/memberships-of-member usr2) (= [p1])
                "usr2 is unaffected"))))
 
@@ -58,8 +58,8 @@
       (dt/is-> (mbr/members-of-group-with-roles p1 [:admin]) (= [usr1]))
       (dt/is-> (mbr/members-of-group-with-roles p1 [:admin :visitor]) (= [usr1 usr2]))
       (dt/is-> (mbr/members-of-group-with-roles p1 [:editor]) (= [usr1 usr2]))
-      (dt/is-> (mbr/members-of-group-with-roles p1 [:clown]) (= []))
-      (dt/is-> (mbr/members-of-group-with-roles p1 nil) (= [])))))
+      (dt/is-> (mbr/members-of-group-with-roles p1 [:clown]) empty?)
+      (dt/is-> (mbr/members-of-group-with-roles p1 nil) empty?))))
 
 (deftest add-with-roles
   (let [dresser (test-dresser)
@@ -111,8 +111,8 @@
             (dt/is-> (mbr/memberships-of-member usr1) (= [grp2])))
           (dt/testing-> "delete user"
             (refs/delete! usr1)
-            (dt/is-> (mbr/memberships-of-member usr1) (= []))
-            (dt/is-> (mbr/members-of-group grp2) (= []))))))
+            (dt/is-> (mbr/memberships-of-member usr1) empty?)
+            (dt/is-> (mbr/members-of-group grp2) empty?)))))
   (testing "db/drop"
     (db/tx-let [tx (mbr/keep-sync (test-dresser))]
         [[usr1] (add-docs tx :users 1)
@@ -127,7 +127,7 @@
                    (= #{grp1 grp2}))
           (dt/is-> (mbr/members-of-group project1) (= [grp1]))
           (db/drop! :groups)
-          (dt/is-> (mbr/memberships-of-member usr1) (= []))
-          (dt/is-> (mbr/memberships-of-member grp1) (= []))
-          (dt/is-> (mbr/members-of-group grp1) (= []))
-          (dt/is-> (mbr/members-of-group grp1) (= []))))))
+          (dt/is-> (mbr/memberships-of-member usr1) empty?)
+          (dt/is-> (mbr/memberships-of-member grp1) empty?)
+          (dt/is-> (mbr/members-of-group grp1) empty?)
+          (dt/is-> (mbr/members-of-group grp1) empty?)))))
