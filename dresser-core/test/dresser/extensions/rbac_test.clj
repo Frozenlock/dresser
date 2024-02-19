@@ -216,7 +216,7 @@
                   (rbac/set-roles-permissions! grp1 {:owner {:read  true
                                                              :write true}})
                   (mbr/upsert-group-member! grp1 usr1 [:owner]))]
-    (db/tx-> (rbac/enforce-rbac dresser usr1) ; wrap the dresser for "usr1"
+    (db/tx-> (rbac/enforce-rbac dresser usr1 {:add :*}) ; wrap the dresser for "usr1"
       (dt/testing-> "Basic operations"
         (dt/is-> (db/drop! :drawer)
                  (thrown-with-msg? clojure.lang.ExceptionInfo #"Missing permission")
@@ -235,9 +235,9 @@
                    (thrown-with-msg? clojure.lang.ExceptionInfo #"Missing document adder reference"))
 
           (rbac/with-doc-adder grp1 [:drawer])
-          ;; (dt/is-> (db/add! :drawer {:doc "data"})
-          ;;          (thrown-with-msg? clojure.lang.ExceptionInfo #"Missing permission")
-          ;;          "Add still requires the adder permission")
+          (dt/is-> (db/add! :drawer {:doc "data"})
+                   (thrown-with-msg? clojure.lang.ExceptionInfo #"Missing permission")
+                   "Add still requires the adder permission")
 
           (mbr/upsert-group-member! grp1 usr1 [:admin])
           (dt/is-> (db/add! :drawer {:doc "data"}) some?
@@ -276,7 +276,7 @@
                    "Sanity check, no rbac"))
 
         ;; User1 can fetch itself and grp1
-        (db/tx-> (rbac/enforce-rbac dresser user1-ref)
+        (db/tx-> (rbac/enforce-rbac dresser user1-ref {})
           (dt/is-> (db/fetch :users {:where {:id (:id user1-data)}
                                      :only  (keys user1-data)})
                    (= [user1-data])
@@ -291,7 +291,7 @@
                    "User can fetch grp with permission"))
 
         ;; User2 can only fetch itself
-        (db/tx-> (rbac/enforce-rbac dresser user2-ref)
+        (db/tx-> (rbac/enforce-rbac dresser user2-ref {})
           (dt/is-> (db/fetch :users {:where {:id (:id user1-data)}
                                      :only  (keys user1-data)})
                    (thrown-with-msg? clojure.lang.ExceptionInfo #"Missing permission")
@@ -309,13 +309,13 @@
       (let [user-data {:id "user1", :name "New user"}]
         (let [[dresser new-user] (db/dr (db/raw-> (test-dresser) (refs/ref! :users (:id user-data))))]
           (db/tx-> dresser
-            (rbac/enforce-rbac new-user)
+            (rbac/enforce-rbac new-user {})
             (dt/is-> (refs/assoc-at! new-user [:a] "some value")
                      (thrown-with-msg? clojure.lang.ExceptionInfo #"Missing permission")
                      "Trying to write to 'itself' when doesn't exist should fail.")))
 
         (let [[dresser new-user] (db/dr (db/raw-> (test-dresser) (refs/ref! :users (:id user-data))))]
           (db/tx-> (-> (db/raw-> dresser (db/upsert! :users user-data))
-                       (rbac/enforce-rbac new-user))
+                       (rbac/enforce-rbac new-user {}))
             (refs/assoc-at! new-user [:a] "some value")
             (dt/is-> (refs/fetch-by-ref new-user) (= (assoc user-data :a "some value")))))))))
