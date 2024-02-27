@@ -241,8 +241,6 @@
              {}
              request))
 
-(def ^:dynamic *skip-rbac* false)
-
 ;; For adding a new document, knowing the current user is
 ;; insufficient: it's also necessary to know the future owner of the
 ;; new document. For example, a user could be a member of 2 orgs. In
@@ -277,8 +275,7 @@
                                :target  adder-ref
                                :type    ::permission}))
           _ (when-not adder-ref (throw (error-fn "Missing document adder reference")))
-          [tx pchain] (binding [*skip-rbac* false] ; for other wrappers
-                        (db/dr (permission-chain tx adder-ref mbr-request member-ref)))]
+          [tx pchain] (db/dr (permission-chain tx adder-ref mbr-request member-ref))]
       (when (empty? pchain)
         (throw (error-fn "Missing permission")))
 
@@ -330,35 +327,34 @@
 
 (defn- default-check
   [member-ref method-sym method tx args request]
-  (binding [*skip-rbac* true]
-    (let [[drawer id & _] args
-          [tx grp-ref] (db/dr (refs/ref! tx drawer id))
-          error (ex-info "Missing permission"
-                         {:by      member-ref
-                          :method  (name method-sym)
-                          :request request
-                          :doc-req (doc-request drawer id request)
-                          :target  grp-ref
-                          :type    ::permission})
-          _ (when (::never request)
-              (throw error))]
+  (let [[drawer id & _] args
+        [tx grp-ref] (db/dr (refs/ref! tx drawer id))
+        error (ex-info "Missing permission"
+                       {:by      member-ref
+                        :method  (name method-sym)
+                        :request request
+                        :doc-req (doc-request drawer id request)
+                        :target  grp-ref
+                        :type    ::permission})
+        _ (when (::never request)
+            (throw error))]
 
-      (cond
+    (cond
 
-        ;; Member can update itself if it exists
-        (= member-ref grp-ref)
-        (let [[tx id] (db/dr (db/get-at tx drawer id [:id]))]
-          (if-not id
-            (throw error)
-            tx))
+      ;; Member can update itself if it exists
+      (= member-ref grp-ref)
+      (let [[tx id] (db/dr (db/get-at tx drawer id [:id]))]
+        (if-not id
+          (throw error)
+          tx))
 
-        ;; Normal behavior for every other drawer
-        :else
-        (let [doc-r (doc-request drawer id request)
-              [tx pchain] (db/dr (permission-chain tx grp-ref doc-r member-ref))]
-          (if (empty? pchain)
-            (throw error)
-            tx))))))
+      ;; Normal behavior for every other drawer
+      :else
+      (let [doc-r (doc-request drawer id request)
+            [tx pchain] (db/dr (permission-chain tx grp-ref doc-r member-ref))]
+        (if (empty? pchain)
+          (throw error)
+          tx)))))
 
 
 (defn permission-wrapper
@@ -368,8 +364,7 @@
       (fn [tx & args]
         (let [[drawer & rargs] args
               drawer-key (dd/key drawer)
-              pass (or *skip-rbac*
-                       (some #{drawer-key} (db/system-drawers tx)))
+              pass (some #{drawer-key} (db/system-drawers tx))
               ?request (if pass
                          nil
                          (->> (apply ?request-fn drawer-key rargs)
