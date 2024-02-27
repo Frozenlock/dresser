@@ -1,6 +1,7 @@
 (ns dresser.extensions.rbac
   (:require [dresser.base :as db]
             [dresser.extension :as ext]
+            [dresser.drawer :as dd]
             [dresser.extensions.durable-refs :as refs]
             [dresser.extensions.memberships :as mbr]
             [dresser.protocols :as dp]))
@@ -31,18 +32,21 @@
   (reduce-kv (fn [acc k v]
                (let [perm (or (get perm-map k) (get perm-map :*))]
                  (cond
-                   ;; If perm is true, or it's a map with a true wildcard, grant permission.
-                   (true? perm) acc
-                   (and (map? perm) (true? (:* perm))) acc
-
                    ;; Both perm and request values are maps, recurse.
                    (and (map? perm) (map? v))
                    (if-let [missing (not-empty (missing-permissions perm v))]
                      (assoc acc k missing)
                      acc)
 
+                   (and perm (not (map? perm))) acc
+
+                   ;; If perm is true, or it's a map with a true wildcard, grant permission.
+                   (and (map? perm)
+                        (when-let [wildcard (:* perm)]
+                          (not (map? wildcard)))) acc
+
                    ;; No specific or wildcard permission found.
-                   :else (assoc acc k true))))
+                   :else (assoc acc k v))))
              {} request))
 
 
@@ -224,89 +228,68 @@
 
 
 
-;; Contrary to the other methods, `add` is extremely context dependent
-;; and needs to be customizable.
-
-;; 1. For adding a new document, knowing the current user is
-;; insufficient, it's also necessary to know the future owner of the
-;; new document. For example, a user could be a member of 2 orgs. In
-;; this scenario, in which one should a new project be added?
-
-;; 2. ALL drawers are probably not a valid destination for a new
-;; document. Furthermore, storing a list of acceptable drawers in the
-;; role itself would be inconvenient, as there's a high likelyhood
-;; that this will need to be updated regularly on an entire drawer
-;; basis rather than one document at a time. For example, adding the
-;; ability for :users to create in :api-keys shouldn't require a huge
-;; migration.
-
-(defn with-doc-adder
-  "`adder-ref` will become the admin of any added document. Documents
-  can only be added in `valid-drawers`."
-  [dresser adder-ref valid-drawers]
-  (db/update-temp-data dresser assoc ::doc-adder
-                       {:adder-ref     adder-ref
-                        :valid-drawers valid-drawers}))
-
-
-(defn- post-add
-  [tx drawer]
-  ;; Do not give members/roles to system drawers
-  (if (some #{drawer} (db/system-drawers tx))
-    tx
-    (let [new-doc-id (db/result tx)
-          [tx new-doc-ref] (db/dr (refs/ref! tx drawer new-doc-id))
-          doc-adder (::doc-adder (db/temp-data tx))
-          {:keys [adder-ref]} doc-adder]
-      (when-not adder-ref (throw (ex-info "Missing adder reference " doc-adder)))
-      (mbr/upsert-group-member! tx new-doc-ref adder-ref [mbr/role-admin]))))
-
-
-(def ^:dynamic *skip-rbac* false)
-
 (defn- doc-request
+  "Takes a (global) request and transform it into a specific doc request.
+  Ex:
+  (doc-request :users \"user1\"
+    {:read {:users {\"user1\" {:name :?}}}})
+
+  => {:read {:name :?}}"
   [drawer id request]
   (reduce-kv (fn [acc k v]
                (assoc acc k (get-in request [k drawer id])))
              {}
              request))
 
-(defn- add-wrapper
-  [member-ref method-sym]
-  (fn [method]
-    (let [?request-fn (method->request-fn method-sym)]
-      (fn [tx target-drawer data]
-        (let [tx (if (or *skip-rbac*
-                         (some #{target-drawer} (db/system-drawers tx)))
-                   tx
-                   (let [{:keys [adder-ref valid-drawers]} (::doc-adder (db/temp-data tx))
-                         request (?request-fn target-drawer data)
-                         error-fn (fn [message]
-                                    (ex-info message
-                                             {:by            member-ref
-                                              :method        (name method-sym)
-                                              :request       request
-                                              :target-drawer target-drawer
-                                              :type          ::permission}))]
-                     (cond
-                       (not adder-ref) (throw (error-fn "Missing document adder reference"))
-                       (not (some #{target-drawer} valid-drawers)) (throw (error-fn "Drawer not allowed"))
-                       :else tx
+(def ^:dynamic *skip-rbac* false)
 
-                       ;; (let [[tx pchain] (binding [*skip-rbac* true] ; for other wrappers
-                       ;;                           (db/dr (permission-chain tx adder-ref {permission true} member-ref)))]
-                       ;;         (if (empty? pchain)
-                       ;;           (throw (error-fn "Missing permission"))
-                       ;;           tx))
-                       )))]
-          (-> (method tx target-drawer data)
-              (post-add target-drawer)))))))
+;; For adding a new document, knowing the current user is
+;; insufficient: it's also necessary to know the future owner of the
+;; new document. For example, a user could be a member of 2 orgs. In
+;; this scenario, in which one should a new project be added?
 
 
-;; The 'fetch' function is also peculiar; it needs to search through
-;; all the docs. To not break the function while still throwing in
-;; case of an unauthorized result, we allow a normal 'fetch' and then
-;; validate that each returned document can be read.
+(defn with-doc-adder
+  "`adder-ref` will become the admin of any added document. Documents
+  can only be added in `valid-drawers`."
+  [dresser adder-ref]
+  (db/update-temp-data dresser assoc ::doc-adder
+                       {:adder-ref     adder-ref}))
+
+
+(defn- post-add
+  [tx drawer-key member-ref]
+  ;; Do not give members/roles to system drawers
+  (if (some #{drawer-key} (db/system-drawers tx))
+    tx
+    (let [new-doc-id (db/result tx)
+          [tx new-doc-ref] (db/dr (refs/ref! tx drawer-key new-doc-id))
+          doc-adder (::doc-adder (db/temp-data tx))
+          {:keys [adder-ref]} doc-adder
+          ;; We are within unrestricted access and must check
+          ;; membership permissions manually
+          mbr-request {:write {:drs_memberships {:member-of {adder-ref :?}}}}
+          error-fn (fn [message]
+                     (ex-info message
+                              {:by      member-ref
+                               :method  (name `dp/-add)
+                               :request mbr-request
+                               :target  adder-ref
+                               :type    ::permission}))
+          _ (when-not adder-ref (throw (error-fn "Missing document adder reference")))
+          [tx pchain] (binding [*skip-rbac* false] ; for other wrappers
+                        (db/dr (permission-chain tx adder-ref mbr-request member-ref)))]
+      (when (empty? pchain)
+        (throw (error-fn "Missing permission")))
+
+      (-> (mbr/upsert-group-member! tx new-doc-ref adder-ref [mbr/role-admin])
+          (db/with-result new-doc-id)))))
+
+
+;; The 'fetch' function is peculiar; it needs to search through all
+;; the docs. To not break the function while still throwing in case of
+;; an unauthorized result, we allow a normal 'fetch' and then validate
+;; that each returned document can be read.
 
 (defn fetch-check
   [member-ref method-sym provided-permissions method tx args]
@@ -319,7 +302,7 @@
         [tx1 docs] (db/dr (method tx drawer (or ?only-with-id only) limit where sort skip))
         tx2 (reduce (fn [tx {:keys [id]}]
                       (let [request (binding [*doc-id* id]
-                                      (request-fn drawer only limit where sort skip))
+                                      (request-fn (dd/key drawer) only limit where sort skip))
                             doc-r (doc-request drawer id request)
                             [tx grp-ref] (db/dr (refs/ref! tx drawer id))
                             [tx pchain] (if (and (some? grp-ref)
@@ -344,29 +327,6 @@
                docs)]
     (db/with-result tx2 docs)))
 
-(defn- add-check
-  [member-ref method-sym provided-permissions method tx args]
-  (let [request-fn (method->request-fn method-sym)]
-    (let [[target-drawer data] args
-          tx (let [{:keys [adder-ref valid-drawers]} (::doc-adder (db/temp-data tx))
-                   request (request-fn target-drawer data)
-                   error-fn (fn [message]
-                              (ex-info message
-                                       {:by            member-ref
-                                        :method        (name method-sym)
-                                        :request       request
-                                        :target-drawer target-drawer
-                                        :type          ::permission}))]
-               (cond
-                 (not adder-ref) (throw (error-fn "Missing document adder reference"))
-                 (not (some #{target-drawer} valid-drawers)) (throw (error-fn "Drawer not allowed"))
-                 :else (let [[tx pchain] (binding [*skip-rbac* true] ; for other wrappers
-                                           (db/dr (permission-chain tx adder-ref request member-ref)))]
-                         (if (empty? pchain)
-                           (throw (error-fn "Missing permission"))
-                           tx))))]
-      (-> (method tx target-drawer data)
-          (post-add target-drawer)))))
 
 (defn- default-check
   [member-ref method-sym method tx args request]
@@ -377,6 +337,7 @@
                          {:by      member-ref
                           :method  (name method-sym)
                           :request request
+                          :doc-req (doc-request drawer id request)
                           :target  grp-ref
                           :type    ::permission})
           _ (when (::never request)
@@ -406,35 +367,33 @@
     (fn [method]
       (fn [tx & args]
         (let [[drawer & rargs] args
+              drawer-key (dd/key drawer)
               pass (or *skip-rbac*
-                       (some #{drawer} (db/system-drawers tx)))
+                       (some #{drawer-key} (db/system-drawers tx)))
               ?request (if pass
                          nil
-                         (->> (apply ?request-fn drawer rargs)
+                         (->> (apply ?request-fn drawer-key rargs)
                               (missing-permissions provided-permissions)
-                              (not-empty)))
-              tx (cond
-                   (nil? ?request) tx
-                   (= method-sym `dp/-fetch) (fetch-check member-ref
-                                                          method-sym
-                                                          provided-permissions
-                                                          method
-                                                          tx
-                                                          args)
-                   (= method-sym `dp/-add) (add-check member-ref
-                                                      method-sym
-                                                      provided-permissions
-                                                      method
-                                                      tx
-                                                      args)
+                              (not-empty)))]
+          (let [tx (cond
+                     (nil? ?request) tx
 
-                   :else (default-check member-ref
-                                        method-sym
-                                        method
-                                        tx
-                                        args
-                                        ?request))]
-          (apply method tx args))))))
+                     (= method-sym `dp/-fetch) (fetch-check member-ref
+                                                            method-sym
+                                                            provided-permissions
+                                                            method
+                                                            tx
+                                                            args)
+
+
+                     :else (default-check member-ref
+                                          method-sym
+                                          method
+                                          tx
+                                          args
+                                          ?request))]
+            (cond-> (apply method tx args)
+              (= method-sym `dp/-add) (post-add drawer-key member-ref))))))))
 
 
 

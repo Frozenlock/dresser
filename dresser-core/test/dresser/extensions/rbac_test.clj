@@ -5,28 +5,46 @@
             [dresser.extensions.memberships :as mbr]
             [dresser.extensions.rbac :as rbac]
             [dresser.impl.hashmap :as hm]
-            [dresser.test :as dt]))
+            [dresser.test :as dt]
+            [dresser.protocols :as dp]))
 
 (use-fixtures :once (dt/coverage-check rbac))
+
+(defn sequential-id-by-drawer
+  "Replaces gen-id implementation (metadata) with ones that increases sequentially.
+
+  Ephemeral DB only; does not check for existing IDs.
+  Only works at the fundamental level."
+  [dresser]
+  (let [*counter (atom {})]
+    (->> (dp/mapify-impls [(dp/impl -gen-id
+                             [dresser drawer]
+                             (db/with-result dresser
+                               (-> (swap! *counter update drawer (fnil inc 0))
+                                   (get drawer))))])
+         (vary-meta dresser merge))))
 
 (defn- test-dresser
   []
   (-> (hm/build)
-      (dt/sequential-id)
+      (sequential-id-by-drawer)
+      ;(dt/sequential-id)
       (dt/no-tx-reuse)
       (mbr/keep-sync)))
 
 (defn- add-groups!
   "Adds n groups and return their DB refs."
-  [dresser n]
-  (db/tx-let [tx dresser]
-      [_ (db/with-result tx nil)] ; clean any existing result
-    (reduce (fn [tx _i]
-              (let [refs (db/result tx)
-                    [tx id] (db/dr (db/add! tx :grps {}))
-                    [tx new-ref] (db/dr (refs/ref! tx :grps id))]
-                (db/with-result tx (conj refs new-ref))))
-            tx (range n))))
+  ([dresser n]
+   (add-groups! dresser n :grps))
+  ([dresser n drawer]
+   (db/tx-let [tx dresser]
+       [_ (db/with-result tx nil)] ; clean any existing result
+     (reduce (fn [tx _i]
+               (let [refs (db/result tx)
+                     [tx id] (db/dr (db/add! tx drawer {}))
+                     [tx new-ref] (db/dr (refs/ref! tx drawer id))]
+                 (db/with-result tx (conj (or refs []) new-ref))))
+             tx (range n)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -210,13 +228,15 @@
 
 (deftest wrapped-rbac
   (let [dresser (test-dresser)
-        dresser (db/raw-> dresser (add-groups! 5))
-        [p1 usr1 usr2 grp1 grp2] (db/result dresser)
+        [dresser [usr1 usr2]] (db/dr (db/raw-> dresser (add-groups! 2 :users)))
+        [dresser [grp1 grp2]] (db/dr (db/raw-> dresser (add-groups! 2 :grps)))
         dresser (db/raw-> dresser
                   (rbac/set-roles-permissions! grp1 {:owner {:read  true
                                                              :write true}})
                   (mbr/upsert-group-member! grp1 usr1 [:owner]))]
-    (db/tx-> (rbac/enforce-rbac dresser usr1 {:add :*}) ; wrap the dresser for "usr1"
+    (db/tx-> (rbac/enforce-rbac dresser usr1 {:add :*})
+      
+      ; wrap the dresser for "usr1"
       (dt/testing-> "Basic operations"
         (dt/is-> (db/drop! :drawer)
                  (thrown-with-msg? clojure.lang.ExceptionInfo #"Missing permission")
@@ -234,19 +254,21 @@
           (dt/is-> (db/add! :drawer {:doc "data"})
                    (thrown-with-msg? clojure.lang.ExceptionInfo #"Missing document adder reference"))
 
-          (rbac/with-doc-adder grp1 [:drawer])
+          (rbac/with-doc-adder grp2)
           (dt/is-> (db/add! :drawer {:doc "data"})
                    (thrown-with-msg? clojure.lang.ExceptionInfo #"Missing permission")
-                   "Add still requires the adder permission")
-
-          (mbr/upsert-group-member! grp1 usr1 [:admin])
-          (dt/is-> (db/add! :drawer {:doc "data"}) some?
-                   "Can add with sufficient permission and allowed drawer")
-
-          (dt/is-> (db/add! :other-drawer {:doc "data"})
-                   (thrown-with-msg? clojure.lang.ExceptionInfo #"Drawer not allowed")
-                   "Drawer must be in the allowed list"))
-        )
+                   "Requires write permission to the adder to set it as an admin")
+          
+          (rbac/with-doc-adder grp1)
+          ((fn [tx]
+             (db/tx-let [tx tx]                 
+                 [new-doc-id (dt/is-> tx
+                                      (db/add! :drawer {:doc "data"}) some?
+                                      "Can add with sufficient permission and allowed drawer")
+                  new-doc-ref (refs/ref tx :drawer new-doc-id)
+                  admin-refs (mbr/members-of-group-with-roles tx new-doc-ref [mbr/role-admin])]
+               (def aaa tx)
+               (is (= admin-refs [grp1])))))))
 
       (dt/testing-> "Higher order operations"
         ;; usr1 is owner and should be able to edit grp1 roles.
