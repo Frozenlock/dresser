@@ -235,7 +235,7 @@
                                                              :write true}})
                   (mbr/upsert-group-member! grp1 usr1 [:owner]))]
     (db/tx-> (rbac/enforce-rbac dresser usr1 {:add :*})
-      
+
       ; wrap the dresser for "usr1"
       (dt/testing-> "Basic operations"
         (dt/is-> (db/drop! :drawer)
@@ -258,10 +258,10 @@
           (dt/is-> (db/add! :drawer {:doc "data"})
                    (thrown-with-msg? clojure.lang.ExceptionInfo #"Missing permission")
                    "Requires write permission to the adder to set it as an admin")
-          
+
           (rbac/with-doc-adder grp1)
           ((fn [tx]
-             (db/tx-let [tx tx]                 
+             (db/tx-let [tx tx]
                  [new-doc-id (dt/is-> tx
                                       (db/add! :drawer {:doc "data"}) some?
                                       "Can add with sufficient permission and allowed drawer")
@@ -325,7 +325,13 @@
           (dt/is-> (db/fetch :grps {:where {:id (:id grp1-data)}
                                     :only  (keys grp1-data)})
                    (thrown-with-msg? clojure.lang.ExceptionInfo #"Missing permission")
-                   "Can't fetch without permission"))))
+                   "Can't fetch without permission"))
+
+        (db/tx-> (rbac/enforce-rbac dresser user2-ref {:read {:grps true}})
+          (dt/is-> (db/fetch :grps {:where {:id (:id grp1-data)}
+                                    :only  (keys grp1-data)})
+                   (= [grp1-data])
+                   "Provided permission"))))
 
     (testing "Self modification"
       (let [user-data {:id "user1", :name "New user"}]
