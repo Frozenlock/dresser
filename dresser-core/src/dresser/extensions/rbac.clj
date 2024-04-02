@@ -288,7 +288,7 @@
 ;; an unauthorized result, we allow a normal 'fetch' and then validate
 ;; that each returned document can be read.
 
-(defn fetch-check
+(defn fetch-and-check
   [member-ref method-sym provided-permissions method tx args]
   (let [[drawer only limit where sort skip] args
         request-fn (method->request-fn method-sym)
@@ -370,16 +370,19 @@
                          (->> (apply ?request-fn drawer-key rargs)
                               (missing-permissions provided-permissions)
                               (not-empty)))]
-          (let [tx (cond
+          (let [is-fetch? (= method-sym `dp/-fetch)
+                fetched-tx (when (and is-fetch? ?request)
+                             (fetch-and-check member-ref
+                                              method-sym
+                                              provided-permissions
+                                              method
+                                              tx
+                                              args))
+
+                tx (cond
+                     fetched-tx tx
+
                      (nil? ?request) tx
-
-                     (= method-sym `dp/-fetch) (fetch-check member-ref
-                                                            method-sym
-                                                            provided-permissions
-                                                            method
-                                                            tx
-                                                            args)
-
 
                      :else (default-check member-ref
                                           method-sym
@@ -387,8 +390,9 @@
                                           tx
                                           args
                                           ?request))]
-            (cond-> (apply method tx args)
-              (= method-sym `dp/-add) (post-add drawer-key member-ref))))))))
+            (or fetched-tx
+                (cond-> (apply method tx args)
+                  (= method-sym `dp/-add) (post-add drawer-key member-ref)))))))))
 
 
 
