@@ -366,14 +366,10 @@
 (def gte ::gte)
 (def exists? ::exists?)
 
-
-(def ops-ks
-  [::exists? ::gt ::gte ::lt ::lte])
-
 (defn ops?
-  "True if vector is a query operation."
-  [v]
-  (when (coll? v) (some #{(first v)} ops-ks)))
+  "True if key is a query operation"
+  [k]
+  (boolean (some #{k} [exists? gte gt lte lt])))
 
 (defn unsupported-ops-err
   [op form]

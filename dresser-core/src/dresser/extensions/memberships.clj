@@ -15,21 +15,20 @@
 (defn- add-group-to-member! ; Can break relation if used alone
   [dresser member-ref grp-ref]
   (db/tx-> dresser
-    (refs/update-at! member-ref [:drs_memberships :member-of]
-                    #(distinct (conj % grp-ref)))))
+    (refs/assoc-at! member-ref [:drs_memberships :member-of grp-ref]
+                    true)))
 
 (defn- remove-group-from-member! ; Can break relation if used alone
   [dresser member-ref grp-ref]
   (db/tx-> dresser
-    (refs/update-at! member-ref [:drs_memberships :member-of]
-                    #(remove #{grp-ref} %))))
+    (refs/dissoc-at! member-ref [:drs_memberships :member-of]  grp-ref)))
 
 (defn memberships-of-member
   "Returns all refs for which target is a member."
   [dresser member-ref]
   (db/tx-> dresser
     (refs/get-at member-ref [:drs_memberships :member-of])
-    (db/update-result #(or % []))))
+    (db/update-result keys)))
 
 ;; The group
 
