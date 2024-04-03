@@ -27,10 +27,27 @@
                     mbr/role-reader {:read true}})
 
 
+(defn- deep-merge [& maps]
+  (let [merge-fn (fn this-merge [& args]
+                   (if (every? map? args)
+                     (apply merge-with this-merge args)
+                     (last args)))]
+    (apply merge-with merge-fn maps)))
+
 (defn missing-permissions
   [perm-map request]
   (reduce-kv (fn [acc k v]
-               (let [perm (or (get perm-map k) (get perm-map :*))]
+               (let [wildcard-perm (get perm-map :*)
+                     specific-perm (get perm-map k)
+                     perm (cond
+                            (and (map? wildcard-perm)
+                                 (map? specific-perm)) (deep-merge wildcard-perm specific-perm)
+
+                            (map? wildcard-perm) (or specific-perm wildcard-perm)
+
+                            (map? specific-perm) (or wildcard-perm specific-perm)
+
+                            :else (or specific-perm wildcard-perm))]
                  (cond
                    ;; Both perm and request values are maps, recurse.
                    (and (map? perm) (map? v))

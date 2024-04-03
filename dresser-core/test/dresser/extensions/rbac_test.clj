@@ -90,7 +90,17 @@
         (is (empty? (rbac/missing-permissions perms request-username)))
         (is (empty? (rbac/missing-permissions perms request-address-street)))
         (is (not-empty (rbac/missing-permissions perms request-email)))
-        (is (not-empty (rbac/missing-permissions perms {:address :?})))))))
+        (is (not-empty (rbac/missing-permissions perms {:address :?})))))
+    (testing "Cumulative specific and wildcard permissions"
+      (let [request-address {:read {:address :?}}
+            request-address-street-zip {:read {:address {:street :?
+                                                         :zip    :?}}}
+            perms {:read {:*       {:street true}
+                          :address {:zip true}}}]
+        (is (empty? (rbac/missing-permissions perms request-address-street-zip)))
+        (is (not-empty (rbac/missing-permissions perms request-address)))))))
+
+
 
 
 (deftest permitted?
