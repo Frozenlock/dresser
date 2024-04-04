@@ -155,8 +155,9 @@ pathwise/side-effect
                      (cond->> results
                        (id-ops ::db/lt) drop-last
                        (id-ops ::db/gt) rest)))]
-    (db/with-result tx
-      (hm/fetch-from-docs all-docs only limit other-where (if sort-only-id? nil sort-config) skip))))
+    (->> (hm/fetch-from-docs all-docs only limit other-where (if sort-only-id? nil sort-config) skip)
+         (doall)
+         (db/with-result tx))))
 
 
 
@@ -242,12 +243,6 @@ pathwise/side-effect
 
 
 
-
-
-
-
-
-(def aaa (build "test-db"))
 
 (comment
   (require '[dresser.extensions.ttl :as ttl])

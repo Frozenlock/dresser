@@ -44,3 +44,16 @@
       (deliver *thread2-write true))
     (deref-timeout *thread1)
     (is (= 11 (db/get-at db2 :test :doc1 [:counter])))))
+
+(deftest fetch-isnt-lazy
+  ;; Codax transactions and lazyness are not a good match.  Better to
+  ;; make sure the fetch request has completed before doing anything
+  ;; else.
+  (db/tx-let [tx (impl/build test-db-path)]
+      [_ (reduce (fn [tx' idx]
+                   (db/add! tx' :users {:name (str "user-" idx)}))
+                 tx (range 50))
+       users (db/fetch tx :users)
+       is-realized? (realized? users)]
+      (is is-realized?)
+    tx))
