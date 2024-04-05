@@ -294,7 +294,17 @@ time and a drawer-object the other half."
             (db/add! :drawer m1)
             (db/add! :drawer m2)
             (is-> (db/fetch :drawer {:only {#{"a" :b {:a 1} [10]} :?}})
-                  (u= [m1 m2]))))))))
+                  (u= [m1 m2]))))))
+
+    (testing "Different set types"
+      (let [impl (impl-f)
+            m1 {#{3 2 1} "map1"}
+            m2 {(sorted-set 3 2 1) "map2"}]
+        (db/tx-> impl
+          (db/add! :drawer m1)
+          (db/add! :drawer m2)
+          (is-> (db/fetch :drawer {:only {#{1 2 3} :?}})
+                (u= [m1 m2])))))))
 
 (defn test--upsert-many
   [impl-f]
