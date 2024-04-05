@@ -168,7 +168,7 @@ doesn't have any."
 
 (ext/defext ttl
   [delay-between-delete-ms]
-  {:deps         [refs/keep-sync]
+  {:deps         [refs/durable-refs]
    :init-fn      #(db/with-system-drawers % [ttl-drawer])
    :wrap-configs (let [*dresser (atom nil)]
                    {`dp/-start {:wrap (fn [start-method]

@@ -69,7 +69,7 @@
 (ext/defext keep-sync
   "Children documents are automatically deleted"
   []
-  {:deps [refs/keep-sync]
+  {:deps [refs/durable-refs]
    :wrap-configs
    (let [clean! (fn [tx drawer id]
                   (db/tx-let [tx tx]

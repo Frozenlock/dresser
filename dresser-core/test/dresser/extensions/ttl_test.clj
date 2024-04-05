@@ -14,8 +14,7 @@
   []
   (-> (hm/build)
       (dt/sequential-id)
-      (dt/no-tx-reuse)
-      (refs/keep-sync)))
+      (dt/no-tx-reuse)))
 
 (defn- add-docs!
   "Adds n docs and return their DB refs."

@@ -119,7 +119,7 @@
   "Automatically maintains membership relations when deleting a document or
   dropping a drawer."
   []
-  {:deps [refs/keep-sync]
+  {:deps [refs/durable-refs]
    :wrap-configs
 
    ;; TODO: only remove if the drawer IDs no longer exist
