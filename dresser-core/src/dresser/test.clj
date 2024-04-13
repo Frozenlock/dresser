@@ -67,21 +67,21 @@ time and a drawer-object the other half."
 (def ^:dynamic *disable-tx-counter* false)
 
 
-(defmethod t/assert-expr 'thrown-with-cause-msg?
-  [msg form]
-  (let [re (nth form 1)
-        body (nthnext form 2)]
-    `(try ~@body
-          (t/do-report {:type :fail, :message ~msg, :expected '~form, :actual nil})
-          (catch clojure.lang.ExceptionInfo tx-e#
-            (let [e# (ex-cause tx-e#)
-                  m# (.getMessage e#)]
-              (if (re-find ~re m#)
-                (t/do-report {:type     :pass,  :message ~msg,
-                              :expected '~form, :actual  e#})
-                (t/do-report {:type     :fail,  :message ~msg,
-                              :expected '~form, :actual  e#})))
-            tx-e#))))
+;; (defmethod t/assert-expr 'thrown-with-cause-msg?
+;;   [msg form]
+;;   (let [re (nth form 1)
+;;         body (nthnext form 2)]
+;;     `(try ~@body
+;;           (t/do-report {:type :fail, :message ~msg, :expected '~form, :actual nil})
+;;           (catch clojure.lang.ExceptionInfo tx-e#
+;;             (let [e# (ex-cause tx-e#)
+;;                   m# (.getMessage e#)]
+;;               (if (re-find ~re m#)
+;;                 (t/do-report {:type     :pass,  :message ~msg,
+;;                               :expected '~form, :actual  e#})
+;;                 (t/do-report {:type     :fail,  :message ~msg,
+;;                               :expected '~form, :actual  e#})))
+;;             tx-e#))))
 
 (defmacro is->
   "Similar to `clojure.test/is`.
@@ -133,10 +133,9 @@ time and a drawer-object the other half."
         (-> dresser# ~@body))) ~dresser))
 
 (defn sequential-id
-  "Replaces gen-id implementation (metadata) with ones that increases sequentially.
+  "Replaces gen-id implementation (metadata) with one that increases sequentially.
 
-  Ephemeral DB only; does not check for existing IDs.
-  Only works at the fundamental level."
+  Ephemeral DB only; does not check for existing IDs."
   [dresser]
   (let [*counter (atom 0)]
     (->> (dp/mapify-impls [(dp/impl -gen-id
@@ -145,71 +144,52 @@ time and a drawer-object the other half."
                                (swap! *counter inc)))])
          (vary-meta dresser merge))))
 
-(let [ns *ns*]
-  (defn no-tx-reuse
-    "Throws if a transaction state is used more than once.
+(defn no-tx-reuse
+  "Throws if a transaction state is used more than once."
+  [dresser]
+  (let [*step-count (atom 0)
+        patch (fn [transact!]
+                (fn [dresser f opts]
+                  (transact!
+                   dresser
+                   (fn [tx]
+                     (let [top? (not (::step tx))]
+                       (when-not *disable-tx-counter*
+                         (let [step-count (or @*step-count 0)]
+                           (when-not (= step-count (::step tx 0))
+                             (throw
+                              (ex-info "Transaction state reused"
+                                       {:outside-count step-count
+                                        :inner-count   (::step tx 0)})))
+                           (reset! *step-count (inc step-count))))
+                       (let [return (try
+                                      (f (if *disable-tx-counter*
+                                           tx
+                                           (update tx ::step (fnil inc 0))))
+                                      ; Restore previous count if we encounter an exception
+                                      (catch Exception e (reset! *step-count (::step tx)) (throw e)))]
+                         (or (when top?
+                               (reset! *step-count nil)
+                               (when (db/dresser? tx)
+                                 (dissoc return ::step)))
+                             return))))
+                   opts)))]
+    (vary-meta dresser update `dp/-transact patch)))
 
-  Warning: cannot validate that the provided dresser doesn't re-use
-  transaction states in its own implementations."
-    [dresser]
-    (let [*step-count (atom 0)
-          s->m (merge (into {} (for [[sym {tx :tx}] dp/dresser-methods
-                                     :when tx
-                                     :let [m (resolve sym)]]
-                                 [sym (-> (fn [dresser & args]
-                                            (db/transact!
-                                             dresser
-                                             (fn [wrapper-tx]
-                                               (update wrapper-tx :source
-                                                       #(apply m % args)))))
-                                          (with-meta {:ns ns}))]))
-                      (dp/mapify-impls
-                       [(dp/impl -transact
-                          [dresser f opts]
-                          (if (:transact dresser)
-                            ;; Transaction is already open
-                            (do
-                              (when-not *disable-tx-counter*
-                                (when-not (= @*step-count (:step dresser 0))
-                                  (throw
-                                   (ex-info "Transaction state reused"
-                                            {:outside-count @*step-count
-                                             :inner-count   (:step dresser 0)})))
-                                (swap! *step-count inc))
-                              (try
-                                (f (if *disable-tx-counter*
-                                     dresser
-                                     (update dresser :step (fnil inc 0))))
-                                ; Restore previous count if we encounter an exception
-                                (catch Exception e (reset! *step-count (:step dresser)) (throw e))))
+(comment
+  (-> (no-tx-reuse (dresser.impl.hashmap/build))
+      (db/transact!
+       (fn [tx]
+         (let [tx1 (db/add! tx :users {:v1 1})
+               tx2 (db/add! tx :users {:v2 2})] ;<- tx reuse!
+           tx2))))
 
-                            ;; Transaction is not yet open
-                            (let [updated-source (db/transact!
-                                                  (:source dresser)
-                                                  (fn [src-tx]
-                                                    (try
-                                                      (:source (f (assoc dresser :transact true :source src-tx)))
-                                                      (catch Exception e (reset! *step-count 0) (throw e))))
-                                                  {:result? false})
-                                  return (assoc dresser :source updated-source)]
-                              (reset! *step-count 0)
-                              (if (:result? opts)
-                                (db/result return)
-                                (dissoc return :transact)))))
-                        (dp/impl -start
-                          [dresser]
-                          (update dresser :source db/start))
-                        (dp/impl -stop
-                          [dresser]
-                          (update dresser :source db/stop))
-                        (dp/impl -temp-data
-                          [dresser]
-                          (db/temp-data (:source dresser)))
-                        (dp/impl -with-temp-data
-                          [dresser data]
-                          (update dresser :source db/with-temp-data data))]))]
-      (-> (assoc {} :source dresser)
-          (vary-meta merge s->m {:type ::db/dresser})))))
+  (-> (no-tx-reuse (dresser.impl.hashmap/build))
+      (db/transact!
+       (fn [tx]
+         (let [tx1 (db/add! tx :users {:v1 1})
+               tx2 (db/add! tx1 :users {:v2 2})]
+           tx2)))))
 
 (defn u= "unordered-equal"
   [x y] (= (set x) (set y)))
@@ -241,7 +221,7 @@ time and a drawer-object the other half."
           (is-> (db/upsert! @drawer1 {:id :id1, :a 2}) (= {:id :id1, :a 2})
                 "Document overwritten")))
       (is (= {:id :some-id}
-             (db/tx-> impl
+             (db/tx-> (impl-f)
                (db/upsert! @drawer1 {:id :some-id})
                (db/fetch-by-id @drawer1 :some-id)))))
 

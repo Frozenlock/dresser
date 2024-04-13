@@ -1,64 +1,5 @@
 (ns dresser.wrap
-  (:require [dresser.base :as db]
-            [dresser.protocols :as dp]))
-
-;; It's possible to wrap a Dresser implementation and intercept its
-;; methods before and after they are applied.
-
-;; One crucial step is to open the transaction of the wrapped dresser
-;; before the transaction of the wrapper itself.
-
-;; Example for 'W' wrapping dresser 'D':
-;;
-;; ┌─── open transaction D
-;; |
-;; | ┌─ open transaction W
-;; | |
-;; | |─── (pre) function W
-;; | |
-;; | |─── function D
-;; | |
-;; | |─── (post) function W
-;; | |
-;; | └─ close transaction W
-;; |
-;; └─── close transaction D
-
-
-(dp/defimpl -transact
-  [dresser f {:keys [result?] :as opts}]
-  (if (:transact dresser)
-    (f dresser)
-
-    (let [;; Evaluate everything inside the source transaction.
-          updated-source (db/transact!
-                          (:source dresser)
-                          (fn [src-tx]
-                            ;; Inside the source transaction (src-tx), do the wrapped transaction.
-                            (:source (f (assoc dresser :transact true :source src-tx))))
-                          (assoc opts :result? false))
-          return (assoc dresser :source updated-source)]
-      (if result?
-        (db/result return)
-        (dissoc return :transact)))))
-
-(defn- wrap-method
-  [method-sym wrap]
-  (let [method (resolve method-sym)
-        wrapped-method (cond-> method
-                         wrap wrap)]
-    (fn [dresser & method-args]
-      (update dresser :source #(apply wrapped-method % method-args)))))
-
-(dp/defimpl -temp-data
-  [dresser]
-  (db/temp-data (:source dresser)))
-
-
-;; Note that wrapping cannot modify implementations. For example,
-;; `gen-id!` will have no effect on how `add!` generates IDs for new
-;; documents.
-
+  (:require [dresser.base :as db]))
 
 (def ^:dynamic ^:private *stack-level* 0)
 
@@ -125,28 +66,12 @@
     (closing-1))"
   [dresser method->wrap]
   (assert (db/dresser? dresser))
-  (let [unexpected-symbols (seq (remove (set dp/dresser-symbols)
-                                        (keys method->wrap)))
-        _ (when unexpected-symbols (throw (ex-info "Unexpected method symbols"
-                                                   {:symbols unexpected-symbols})))]
-
-    (vary-meta (assoc {} :source dresser)
-               merge
-               ;; Preserve the original dresser metadata
-               (meta dresser)
-               ;; By default all methods are wrapped in order to
-               ;; correctly handle the wrapped dresser object.
-               (into {} (for [sym dp/dresser-symbols]
-                          [sym (wrap-method sym nil)]))
-
-               ;; User-provided wrapped method
-               (into {} (for [[sym cfgs] method->wrap
-                              :let [{:keys [wrap closing]} cfgs]]
-                          [sym (-> (wrap-method sym wrap)
-                                   (wrap-closing-fn sym closing))]))
-
-               ;; Those methods require careful attention.
-               ;; Better to not let users redefine them.
-               (dp/mapify-impls [-transact
-                                 -temp-data]))))
-
+  (let [wrapper-id (gensym "wrapper-")]
+    (vary-meta dresser
+               (fn [m]
+                 (reduce (fn [m [sym {:keys [wrap closing]}]]
+                           (update m sym
+                                   #(-> ((or wrap identity) %)
+                                        (wrap-closing-fn sym closing))))
+                         m
+                         method->wrap)))))

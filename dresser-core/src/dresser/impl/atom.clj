@@ -1,7 +1,7 @@
 (ns dresser.impl.atom
   (:require [dresser.base :as db]
-            [dresser.protocols :as dp]
             [dresser.impl.hashmap :as hm]
+            [dresser.protocols :as dp]
             [dresser.test :as dt]))
 
 ;; We don't use `swap!` to avoid the automatic retries.
@@ -11,7 +11,11 @@
   (locking (:lock dresser)
     (let [temp-data (db/temp-data dresser)
           source @(:*source dresser)
-          source' (-> (db/with-temp-data source temp-data)
+          source' (-> (vary-meta source merge
+                                 (dissoc (meta dresser) `dp/-transact
+                                         `dp/-start
+                                         `dp/-stop))
+                      (db/with-temp-data temp-data)
                       (db/transact! #(f %) {:result? false}))
           _ (when-not (compare-and-set! (:*source dresser)
                                         source
@@ -39,7 +43,7 @@
 (defn build
   "Build an IDresser atom from a map or from another IDresser object."
   {:test (fn []
-           (dt/test-impl build))}
+           (dt/test-impl #(dt/no-tx-reuse (build))))}
   ([] (build {}))
   ([map-or-dresser]
    (let [inner-dresser (cond
@@ -48,4 +52,6 @@
      (-> {:*source (atom inner-dresser)
           :data    (db/temp-data inner-dresser)
           :lock    :lock}
-         (with-meta (merge atom-impl {:type ::db/dresser}))))))
+         (with-meta (merge
+                     (meta inner-dresser)
+                     atom-impl))))))

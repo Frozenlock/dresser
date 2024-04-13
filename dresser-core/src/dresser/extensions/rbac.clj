@@ -375,41 +375,46 @@
 
 
 (defn permission-wrapper
-  [member-ref method-sym provided-permissions]
+  [member-ref method-sym provided-permissions wrapper-id]
   (when-let [?request-fn (method->request-fn method-sym)]
     (fn [method]
       (fn [tx & args]
-        (let [[drawer & rargs] args
-              drawer-key (dd/key drawer)
-              pass (some #{drawer-key} (db/system-drawers tx))
-              ?request (if pass
-                         nil
-                         (->> (apply ?request-fn drawer-key rargs)
-                              (missing-permissions provided-permissions)
-                              (not-empty)))]
-          (let [is-fetch? (= method-sym `dp/-fetch)
-                fetched-tx (when (and is-fetch? ?request)
-                             (fetch-and-check member-ref
-                                              method-sym
-                                              provided-permissions
-                                              method
-                                              tx
-                                              args))
+        ;; Do not check permission for nested methods (implementations)
+        (if (db/temp-data tx [wrapper-id])
+          (apply method tx args)
+          (let [tx (db/assoc-temp-data tx wrapper-id true)
+                [drawer & rargs] args
+                drawer-key (dd/key drawer)
+                pass (some #{drawer-key} (db/system-drawers tx))
+                ?request (if pass
+                           nil
+                           (->> (apply ?request-fn drawer-key rargs)
+                                (missing-permissions provided-permissions)
+                                (not-empty)))]
+            (let [is-fetch? (= method-sym `dp/-fetch)
+                  fetched-tx (when (and is-fetch? ?request)
+                               (fetch-and-check member-ref
+                                                method-sym
+                                                provided-permissions
+                                                method
+                                                tx
+                                                args))
 
-                tx (cond
-                     fetched-tx tx
+                  tx (cond
+                       fetched-tx tx
 
-                     (nil? ?request) tx
+                       (nil? ?request) tx
 
-                     :else (default-check member-ref
-                                          method-sym
-                                          method
-                                          tx
-                                          args
-                                          ?request))]
-            (or fetched-tx
-                (cond-> (apply method tx args)
-                  (= method-sym `dp/-add) (post-add drawer-key member-ref)))))))))
+                       :else (default-check member-ref
+                                            method-sym
+                                            method
+                                            tx
+                                            args
+                                            ?request))]
+              (-> (or fetched-tx
+                      (cond-> (apply method tx args)
+                        (= method-sym `dp/-add) (post-add drawer-key member-ref)))
+                  (db/update-temp-data dissoc wrapper-id)))))))))
 
 
 
@@ -429,7 +434,8 @@
   {:deps [mbr/keep-sync]
    ;:throw-on-reuse? true
    :wrap-configs
-   (into {} (for [sym dp/dresser-symbols
-                  :let [wrap (permission-wrapper member-ref sym permissions)]
-                  :when wrap]
-              [sym {:wrap wrap}]))})
+   (let [wrapper-id (gensym "RBAC-")]
+     (into {} (for [sym dp/dresser-symbols
+                    :let [wrap (permission-wrapper member-ref sym permissions wrapper-id)]
+                    :when wrap]
+                [sym {:wrap wrap}])))})

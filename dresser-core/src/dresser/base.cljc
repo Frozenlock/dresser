@@ -31,6 +31,17 @@
   (->> (apply f (temp-data dresser) args)
        (with-temp-data dresser)))
 
+(defn assoc-temp-data
+  ([dresser key val]
+   (update-temp-data dresser assoc key val))
+  ([dresser key val & kvs]
+   (let [ret (assoc-temp-data dresser key val)]
+     (if kvs
+       (if (next kvs)
+         (recur ret (first kvs) (second kvs) (nnext kvs))
+         (throw (ex-info "uneven number of arguments for keys/vals")))
+       ret))))
+
 
 (defn start
   {:doc (:doc (meta #'dp/-start))}
@@ -74,13 +85,21 @@
    ;;     (if result? (result return) return)))
    ))
 
+(def drs-drawer
+  "Drawer to store dresser configuration."
+  :drs_config)
+
+(def drs-doc-id
+  "drs-config")
 
 
 (defn system-drawers
   "Drawers that are important for 'basic' system operations.
   Most of the time they should be ignored by extensions."
   [dresser]
-  (:drs-system-drawers (temp-data dresser)))
+  (-> (or (:drs-system-drawers (temp-data dresser))
+          #{})
+      (conj drs-drawer)))
 
 (defn with-system-drawers
   [dresser drawers]
@@ -406,15 +425,6 @@
                     :sort  sort
                     :where where})
      (update-result first))))
-
-
-
-(def drs-drawer
-  "Drawer to store dresser configuration."
-  :drs_config)
-
-(def drs-doc-id
-  "drs-config")
 
 
 

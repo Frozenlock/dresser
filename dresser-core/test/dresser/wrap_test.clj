@@ -1,12 +1,11 @@
 (ns dresser.wrap-test
-  (:require [clojure.string :as str]
-            [clojure.test :as t :refer [deftest is testing use-fixtures]]
+  (:require [clojure.test :as t :refer [deftest is testing use-fixtures]]
             [dresser.base :as db]
             [dresser.impl.atom :as at]
             [dresser.impl.hashmap :as hm]
+            [dresser.protocols :as dp]
             [dresser.test :as dt]
-            [dresser.wrap :as wrap]
-            [dresser.protocols :as dp]))
+            [dresser.wrap :as wrap]))
 
 (use-fixtures :once (dt/coverage-check wrap))
 
@@ -28,12 +27,12 @@
           wrap-fn (fn [impl pre-k post-k]
                     ;; The wrappper adds pre-k and post-k document
                     ;; whenever the 'add' method is called
-                    (wrap/build impl {`dp/-add {:wrap (fn [_add-method]
+                    (wrap/build impl {`dp/-add {:wrap (fn [add-method]
                                                         (fn [tx drawer data]
                                                           (db/tx-let [tx tx]
-                                                              [_ (db/add! tx drawer {:v pre-k})
-                                                               id (db/add! tx drawer data)
-                                                               _ (db/add! tx drawer {:v post-k})]
+                                                              [_ (add-method tx drawer {:v pre-k})
+                                                               id (add-method tx drawer data)
+                                                               _ (add-method tx drawer {:v post-k})]
                                                             id)))}}))]
       (let [result (db/tx-> (wrap-fn (make-impl) :pre1 :post1)
                      (dt/is-> (db/add! :users {:v "User1"}) (= 2))
@@ -82,7 +81,7 @@
                                              :closing (fn close2 [tx & args]
                                                         (db/update-result tx conj :closing3))}})
                       ;; Layer without closing fn
-                      (wrap/build {`dp/-add {:wrap    (fn [m]
+                      (wrap/build {`dp/-add {:wrap (fn [m]
                                                         (fn [tx & args]
                                                           (-> (apply m tx args)
                                                               (db/update-result conj :wrap4))))}}))]
