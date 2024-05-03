@@ -1,7 +1,6 @@
 (ns dresser.impl.codax
   (:require [codax.core :as c]
             [dresser.base :as db]
-            [dresser.drawer :as dd]
             [dresser.impl.hashmap :as hm]
             [dresser.impl.optional :as opt]
             [dresser.impl.pathwise :as pathwise]
@@ -71,16 +70,15 @@ pathwise/side-effect
 (dp/defimpl -delete
   [tx drawer id]
   (let [codax (:codax tx)
-        codax (c/dissoc-at codax [(dd/key drawer) id])]
+        codax (c/dissoc-at codax [drawer id])]
     (-> (assoc tx :codax codax)
         (db/with-result id))))
 
 (dp/defimpl -drop
   [tx drawer]
-  (let [drawer-key (dd/key drawer)
-        codax (:codax tx)
-        codax (c/dissoc-at codax [drawer-key])
-        codax (c/dissoc-at codax [codax-drawers drawer-key])]
+  (let [codax (:codax tx)
+        codax (c/dissoc-at codax [drawer])
+        codax (c/dissoc-at codax [codax-drawers drawer])]
     (-> (assoc tx :codax codax)
         (db/with-result drawer))))
 
@@ -147,7 +145,7 @@ pathwise/side-effect
                               [end-key start-key]
                               [start-key end-key])
         id-ops (set (keys id-queries))
-        all-docs (let [results (map second (lazy-fetch codax [(dd/key drawer)] start-key end-key 1 false sort-id-reverse?))]
+        all-docs (let [results (map second (lazy-fetch codax [drawer] start-key end-key 1 false sort-id-reverse?))]
                    (if sort-id-reverse?
                      (cond->> results
                        (id-ops ::db/lt) rest
@@ -169,7 +167,7 @@ pathwise/side-effect
   [tx drawer id only where]
   (let [codax (:codax tx)]
     (db/with-result tx
-      (some-> (c/get-at codax [(dd/key drawer) id])
+      (some-> (c/get-at codax [drawer id])
               (hm/where? where)
               (hm/take-from only)))))
 
@@ -180,7 +178,7 @@ pathwise/side-effect
 
 (dp/defimpl -upsert
   [tx drawer data]
-  (let [drawer-key (dd/key drawer)
+  (let [drawer-key drawer
         codax (:codax tx)
         codax (c/assoc-at codax [drawer-key (:id data)] data)
         drawer-registered? (c/get-at codax [codax-drawers drawer-key])
