@@ -1,7 +1,6 @@
 (ns dresser.impl.optional
   (:require [dresser.base :as db]
-            [dresser.protocols :as dp]
-            [dresser.drawer :as dd]))
+            [dresser.protocols :as dp]))
 
 (dp/defimpl -gen-id
   [tx _drawer]
@@ -99,6 +98,10 @@
       (let [[tx d-id] (db/dr (db/gen-id! tx db/drs-drawer))]
         (db/assoc-at! tx db/drs-drawer db/drs-doc-id [:dresser-id] d-id)))))
 
+(dp/defimpl -drawer-key
+  [tx drawer-id]
+  (db/with-result tx drawer-id))
+
 
 
 ;; Drawer stuff. Might migrate later.
@@ -125,6 +128,7 @@
     -assoc-at
     -dissoc-at
     -dresser-id
+    -drawer-key
     -drop
     -fetch-by-id
     -fetch-count

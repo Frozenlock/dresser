@@ -1,7 +1,6 @@
 (ns dresser.extensions.drawer-registry-test
   (:require [clojure.test :as t :refer [deftest testing use-fixtures]]
             [dresser.base :as db]
-            [dresser.drawer :as dd]
             [dresser.extensions.drawer-registry :as d-reg]
             [dresser.impl.hashmap :as hm]
             [dresser.test :as dt]))
@@ -32,12 +31,10 @@
       (-> tx
           (dt/is-> (db/fetch-by-id :d1 d1-1) (= d1-doc1)
                    "Sanity check")
-          (dt/is-> (db/rename-drawer! (dd/drawer :d1)
-                                      (dd/drawer :d2))
+          (dt/is-> (db/rename-drawer! :d1 :d2)
                    (thrown-with-msg? clojure.lang.ExceptionInfo #"Can't rename to an existing drawer"))
 
-          (db/rename-drawer! (dd/drawer :d1)
-                             (dd/drawer :new-d1))
+          (db/rename-drawer! :d1 :new-d1)
           (dt/is-> (db/fetch-by-id :d1 d1-1) nil?
                    "Document doesn't exist under old drawer name")
           (dt/is-> (db/fetch-by-id :new-d1 d1-1) (= d1-doc1)

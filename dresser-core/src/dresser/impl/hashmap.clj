@@ -1,7 +1,6 @@
 (ns dresser.impl.hashmap
   (:require [clojure.test :as t :refer [is]]
             [dresser.base :as db]
-            [dresser.drawer :as dd]
             [dresser.impl.optional :as opt]
             [dresser.protocols :as dp]
             [dresser.test :as dt]))
@@ -155,16 +154,14 @@
 
 (dp/defimpl -fetch
   [tx drawer only limit where sort-config skip]
-  (let [drawer-key (dd/key drawer)]
-    (db/with-result tx
-      (-> (vals (get-in tx [:db drawer-key]))
-          (fetch-from-docs only limit where sort-config skip)))))
+  (db/with-result tx
+    (-> (vals (get-in tx [:db drawer]))
+        (fetch-from-docs only limit where sort-config skip))))
 
 (dp/defimpl -upsert
   [tx drawer data]
-  (let [drawer-key (dd/key drawer)]
-    (-> (assoc-in tx [:db drawer-key (:id data)] data)
-        (db/with-result data))))
+  (-> (assoc-in tx [:db drawer (:id data)] data)
+      (db/with-result data)))
 
 (dp/defimpl -transact
   [dresser f {:keys [result?]}]
@@ -187,12 +184,11 @@
 
 (dp/defimpl -delete
   [tx drawer id]
-  (let [drawer-key (dd/key drawer)
-        drawer-doc (get-in tx [:db drawer-key])
+  (let [drawer-doc (get-in tx [:db drawer])
         drawer-doc' (dissoc drawer-doc id)]
     (-> (if (empty? drawer-doc')
-          (update tx :db dissoc drawer-key)
-          (update tx :db assoc drawer-key drawer-doc'))
+          (update tx :db dissoc drawer)
+          (update tx :db assoc drawer drawer-doc'))
         (db/with-result id))))
 
 (dp/defimpl -all-drawers
@@ -211,7 +207,7 @@
 
 (dp/defimpl -assoc-at
   [tx drawer id ks data]
-  (-> (update-in tx [:db (dd/key drawer) id]
+  (-> (update-in tx [:db drawer id]
                  (fn [doc]
                    (-> (if (seq ks)
                          (assoc-in doc ks data)
@@ -221,11 +217,10 @@
 
 (dp/defimpl -fetch-by-id
   [tx drawer id only where]
-  (let [drawer-key (dd/key drawer)]
-    (db/with-result tx
-      (some-> (get-in tx [:db drawer-key id])
-              (where? where)
-              (take-from only)))))
+  (db/with-result tx
+    (some-> (get-in tx [:db drawer id])
+            (where? where)
+            (take-from only))))
 
 (def hashmap-adv-impl
   (dp/mapify-impls [-assoc-at
@@ -236,7 +231,8 @@
 (defn- base-impl-build
   {:test #(dt/test-impl (fn [] (dt/no-tx-reuse (base-impl-build {}))))}
   [m]
-  (vary-meta {:db (into (sorted-map) m)}
+  (vary-meta ;(db/->DresserMap {:db (into (sorted-map) m)})
+   {:db (into (sorted-map) m)}
              merge
              {:type ::db/dresser}
              opt/optional-impl

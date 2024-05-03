@@ -1,7 +1,6 @@
 (ns dresser.extensions.rbac
   (:require [dresser.base :as db]
             [dresser.extension :as ext]
-            [dresser.drawer :as dd]
             [dresser.extensions.durable-refs :as refs]
             [dresser.extensions.memberships :as mbr]
             [dresser.protocols :as dp]))
@@ -316,7 +315,7 @@
         [tx1 docs] (db/dr (method tx drawer (or ?only-with-id only) limit where sort skip))
         tx2 (reduce (fn [tx {:keys [id]}]
                       (let [request (binding [*doc-id* id]
-                                      (request-fn (dd/key drawer) only limit where sort skip))
+                                      (request-fn drawer only limit where sort skip))
                             doc-r (doc-request drawer id request)
                             [tx grp-ref] (db/dr (refs/ref! tx drawer id))
                             [tx pchain] (if (and (some? grp-ref)
@@ -384,11 +383,10 @@
           (apply method tx args)
           (let [tx (db/assoc-temp-data tx wrapper-id true)
                 [drawer & rargs] args
-                drawer-key (dd/key drawer)
-                pass (some #{drawer-key} (db/system-drawers tx))
+                pass (some #{drawer} (db/system-drawers tx))
                 ?request (if pass
                            nil
-                           (->> (apply ?request-fn drawer-key rargs)
+                           (->> (apply ?request-fn drawer rargs)
                                 (missing-permissions provided-permissions)
                                 (not-empty)))]
             (let [is-fetch? (= method-sym `dp/-fetch)
@@ -413,7 +411,7 @@
                                             ?request))]
               (-> (or fetched-tx
                       (cond-> (apply method tx args)
-                        (= method-sym `dp/-add) (post-add drawer-key member-ref)))
+                        (= method-sym `dp/-add) (post-add drawer member-ref)))
                   (db/update-temp-data dissoc wrapper-id)))))))))
 
 

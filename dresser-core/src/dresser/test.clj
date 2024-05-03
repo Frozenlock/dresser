@@ -2,7 +2,6 @@
   (:require [clojure.set :as set]
             [clojure.test :as t :refer [is testing]]
             [dresser.base :as db]
-            [dresser.drawer :as dd]
             [dresser.protocols :as dp]
             [dresser.test :as dt])
   (:import (java.util Date)))
@@ -48,20 +47,6 @@
 
 ;;;;;;;;;;;;
 
-
-(defn test-drawer [x]
-  "Returns a derefable drawer which returns a drawer-key half to the
-time and a drawer-object the other half."
-  (let [*return-drawer-key? (atom false)
-        drawer (dd/drawer x)]
-    (reify clojure.lang.IDeref
-      (deref [_]
-        (if-let [dk? (swap! *return-drawer-key? not)]
-          (dd/key drawer)
-          drawer)))))
-
-(def drawer1 (test-drawer :drawer1))
-(def drawer2 (test-drawer :drawer2))
 
 
 (def ^:dynamic *disable-tx-counter* false)
@@ -203,27 +188,27 @@ time and a drawer-object the other half."
       (is (thrown-with-msg?
            clojure.lang.ExceptionInfo
            #"Missing document ID"
-           (db/upsert! impl @drawer1 {:a 1})))
+           (db/upsert! impl :drawer1 {:a 1})))
       (is (thrown-with-msg?
            clojure.lang.ExceptionInfo
            #"Missing document ID"
-           (db/upsert! impl @drawer1 {:a 1, :id nil})))
+           (db/upsert! impl :drawer1 {:a 1, :id nil})))
 
       (let [test-doc {:id         :id1,
                       :a          [{:b "string"
                                     :c :keyword}]
                       [:vec :key] 12}]
         (db/tx-> impl
-          (is-> (db/upsert! @drawer1 test-doc) (= test-doc)
+          (is-> (db/upsert! :drawer1 test-doc) (= test-doc)
                 "Expected return")
-          (is-> (db/fetch-by-id @drawer1 :id1) (= test-doc)
+          (is-> (db/fetch-by-id :drawer1 :id1) (= test-doc)
                 "Document correctly upserted")
-          (is-> (db/upsert! @drawer1 {:id :id1, :a 2}) (= {:id :id1, :a 2})
+          (is-> (db/upsert! :drawer1 {:id :id1, :a 2}) (= {:id :id1, :a 2})
                 "Document overwritten")))
       (is (= {:id :some-id}
              (db/tx-> (impl-f)
-               (db/upsert! @drawer1 {:id :some-id})
-               (db/fetch-by-id @drawer1 :some-id)))))
+               (db/upsert! :drawer1 {:id :some-id})
+               (db/fetch-by-id :drawer1 :some-id)))))
 
     (testing "Maps as keys"
       (testing "only keywords as keys"
@@ -292,19 +277,19 @@ time and a drawer-object the other half."
     (db/tx-let [tx (impl-f)]
         [[doc1 doc2 doc3 :as docs] [{:id 1, :a 1}, {:id 2, :b 2}, {:id "a", :c 3}]
          _ (-> tx
-               (is-> (db/upsert-many! @drawer1 docs) (= docs)
+               (is-> (db/upsert-many! :drawer1 docs) (= docs)
                      "Returns coll.")
-               (is-> (db/fetch-by-id @drawer1 1) (= doc1))
-               (is-> (db/fetch-by-id @drawer1 2) (= doc2))
-               (is-> (db/fetch-by-id @drawer1 "a") (= doc3))
+               (is-> (db/fetch-by-id :drawer1 1) (= doc1))
+               (is-> (db/fetch-by-id :drawer1 2) (= doc2))
+               (is-> (db/fetch-by-id :drawer1 "a") (= doc3))
                (testing-> "Overwrites docs"
-                 (db/upsert-many! @drawer1 [{:id 1, :new "value"}])
-                 (is-> (db/fetch-by-id @drawer1 1) (= {:id 1, :new "value"}) "Overwritten")
-                 (is-> (db/fetch-by-id @drawer1 2) (= doc2) "Untouched")))]
+                 (db/upsert-many! :drawer1 [{:id 1, :new "value"}])
+                 (is-> (db/fetch-by-id :drawer1 1) (= {:id 1, :new "value"}) "Overwritten")
+                 (is-> (db/fetch-by-id :drawer1 2) (= doc2) "Untouched")))]
       (is (thrown-with-msg?
            clojure.lang.ExceptionInfo
            #"Missing document ID"
-           (db/upsert-many! tx @drawer1 {:a 1 :b "String"})))
+           (db/upsert-many! tx :drawer1 {:a 1 :b "String"})))
       tx)))
 
 
@@ -318,39 +303,39 @@ time and a drawer-object the other half."
                          {:id 4, :sort {:a 3} :r (rand)}]
           docs [d1 d2 d3 d4]]
       (db/tx-> (impl-f)
-        (db/upsert-many! @drawer1 (sort-by :r docs))
+        (db/upsert-many! :drawer1 (sort-by :r docs))
         ;tx
         (testing-> "- Where"
-          (is-> (db/fetch @drawer1 {:where {:1 1}}) (u= [d1 d2 d3]))
-          (is-> (db/fetch @drawer1 {:where {:2 2}}) (u= [d2 d3]))
-          (is-> (db/fetch @drawer1 {:where {:c {:d :nested}}}) (u= [d3]))
+          (is-> (db/fetch :drawer1 {:where {:1 1}}) (u= [d1 d2 d3]))
+          (is-> (db/fetch :drawer1 {:where {:2 2}}) (u= [d2 d3]))
+          (is-> (db/fetch :drawer1 {:where {:c {:d :nested}}}) (u= [d3]))
 
           (testing-> " - query op"
             (testing-> " - exists?"
-              (is-> (db/fetch @drawer1 {:where {:c {db/exists? true}}}) (u= [d3]))
-              (is-> (db/fetch @drawer1 {:where {:d {db/exists? true}}}) (u= []))
-              (is-> (db/fetch @drawer1 {:where {:1 {db/exists? false}}}) (u= [d4])))
+              (is-> (db/fetch :drawer1 {:where {:c {db/exists? true}}}) (u= [d3]))
+              (is-> (db/fetch :drawer1 {:where {:d {db/exists? true}}}) (u= []))
+              (is-> (db/fetch :drawer1 {:where {:1 {db/exists? false}}}) (u= [d4])))
 
             (testing-> " - gt(e) (bigger)"
-              (is-> (db/fetch @drawer1 {:where {:1 {db/gt 1}}}) (u= []))
-              (is-> (db/fetch @drawer1 {:where {:2 {db/gt 1}}}) (u= [d2 d3]))
-              (is-> (db/fetch @drawer1 {:where {:1 {db/gte 1}}}) (u= [d1 d2 d3]))
-              (is-> (db/fetch @drawer1 {:where {:2 {db/gte 1}}}) (u= [d2 d3])))
+              (is-> (db/fetch :drawer1 {:where {:1 {db/gt 1}}}) (u= []))
+              (is-> (db/fetch :drawer1 {:where {:2 {db/gt 1}}}) (u= [d2 d3]))
+              (is-> (db/fetch :drawer1 {:where {:1 {db/gte 1}}}) (u= [d1 d2 d3]))
+              (is-> (db/fetch :drawer1 {:where {:2 {db/gte 1}}}) (u= [d2 d3])))
 
             (testing-> " - lt(e) (smaller)"
-              (is-> (db/fetch @drawer1 {:where {:1 {db/lt 2}}}) (u= [d1 d2 d3]))
-              (is-> (db/fetch @drawer1 {:where {:2 {db/lt 2}}}) (u= []))
-              (is-> (db/fetch @drawer1 {:where {:1 {db/lte 2}}}) (u= [d1 d2 d3]))
-              (is-> (db/fetch @drawer1 {:where {:2 {db/lte 2}}}) (u= [d2 d3])))))
+              (is-> (db/fetch :drawer1 {:where {:1 {db/lt 2}}}) (u= [d1 d2 d3]))
+              (is-> (db/fetch :drawer1 {:where {:2 {db/lt 2}}}) (u= []))
+              (is-> (db/fetch :drawer1 {:where {:1 {db/lte 2}}}) (u= [d1 d2 d3]))
+              (is-> (db/fetch :drawer1 {:where {:2 {db/lte 2}}}) (u= [d2 d3])))))
 
         (testing-> "- Only"
-          (is-> (db/fetch @drawer1 {:only {:id :?}}) (u= (for [{:keys [id]} docs]
+          (is-> (db/fetch :drawer1 {:only {:id :?}}) (u= (for [{:keys [id]} docs]
                                                            {:id id})))
           (testing-> " - Nested"
-            (is-> (db/fetch @drawer1 {:only {:c {:d :?}}}) (u= [{} {} {:c {:d :nested}}]))))
+            (is-> (db/fetch :drawer1 {:only {:c {:d :?}}}) (u= [{} {} {:c {:d :nested}}]))))
 
         (testing-> "- Limit"
-          (is-> (-> (db/fetch @drawer1 {:limit 2
+          (is-> (-> (db/fetch :drawer1 {:limit 2
                                         :where {:1 1}})
                     (db/update-result count))
                 (= 2))))
@@ -358,33 +343,33 @@ time and a drawer-object the other half."
       (testing " - Sort"
         (db/tx-> (impl-f)
           ;; No randomness, insert by ID order
-          (db/upsert-many! @drawer1 (sort-by :id docs))
+          (db/upsert-many! :drawer1 (sort-by :id docs))
           ;; Simple sort
-          (is-> (db/fetch @drawer1 {:sort [[[:id] :asc]]})
+          (is-> (db/fetch :drawer1 {:sort [[[:id] :asc]]})
                 (= [d1 d2 d3 d4]))
           ;; Equality in the sort
-          (is-> (db/fetch @drawer1 {:sort [[[:sort :a] :desc]]})
+          (is-> (db/fetch :drawer1 {:sort [[[:sort :a] :desc]]})
                 (or (= [d4 d3 d1 d2])
                     (= [d4 d3 d2 d1])))
           ;; Sort by multiple values
-          (is-> (db/fetch @drawer1 {:sort [[[:sort :a] :asc]
+          (is-> (db/fetch :drawer1 {:sort [[[:sort :a] :asc]
                                            [[:sort :b] :desc]]})
                 (= [d2 d1 d3 d4]))
           ;; Make sure the sorting occurs BEFORE the limit
           (testing-> " sort/limit eval order"
-            (is-> (db/fetch @drawer1 {:limit 1
+            (is-> (db/fetch :drawer1 {:limit 1
                                       :sort  [[[:id] :desc]]})
                   (= [d4]))
-            (is-> (db/fetch @drawer1 {:limit 1
+            (is-> (db/fetch :drawer1 {:limit 1
                                       :sort  [[[:id] :asc]]})
                   (= [d1])))))
 
       (testing " - Skip"
         (db/tx-let [tx (impl-f)]
-            [_ (db/upsert-many! tx @drawer1 docs)
-             f1 (db/fetch tx @drawer1 {:limit 2})
+            [_ (db/upsert-many! tx :drawer1 docs)
+             f1 (db/fetch tx :drawer1 {:limit 2})
              ids1 (set (map :id f1))
-             f2 (db/fetch tx @drawer1 {:limit 2, :skip 2})
+             f2 (db/fetch tx :drawer1 {:limit 2, :skip 2})
              ids2 (set (map :id f2))]
           (is (empty? (set/intersection ids1 ids2)))
           tx)))))
@@ -394,15 +379,15 @@ time and a drawer-object the other half."
   (testing "Add & fetch-by-id"
     (db/tx-let [tx (impl-f)]
         [[doc1 doc2] [{:a 1 :b "String"}, {:b 2 :c {:nested "data"}}]
-         id1 (db/add! tx @drawer1 doc1)
-         id2 (db/add! tx @drawer1 doc2)
+         id1 (db/add! tx :drawer1 doc1)
+         id2 (db/add! tx :drawer1 doc2)
          id->doc {id1 (assoc doc1 :id id1)
                   id2 (assoc doc2 :id id2)}]
       (-> tx
-          (is-> (-> (db/fetch-by-id @drawer1 id1)
+          (is-> (-> (db/fetch-by-id :drawer1 id1)
                     (db/update-result #(dissoc % :id)))
                 (= doc1))
-          (is-> (-> (db/fetch-by-id @drawer1 id2)
+          (is-> (-> (db/fetch-by-id :drawer1 id2)
                     (db/update-result #(dissoc % :id)))
                 (= doc2))))))
 
@@ -411,55 +396,55 @@ time and a drawer-object the other half."
   (testing "Transact"
     (let [doc {:id :some-id}]
       ;; Test that we get the expected value OUTSIDE the transaction
-      (is (= doc (db/transact! (impl-f) #(db/upsert! % @drawer1 doc))))
+      (is (= doc (db/transact! (impl-f) #(db/upsert! % :drawer1 doc))))
       ;; ... Except when we ask to not extract the result
-      (is (db/dresser? (db/transact! (impl-f) #(db/upsert! % @drawer1 doc) {:result? false}))))
+      (is (db/dresser? (db/transact! (impl-f) #(db/upsert! % :drawer1 doc) {:result? false}))))
 
     (testing "Rollback on exception"
       ;; Exceptions thrown inside a transaction should cause a rollack
       (let [doc {:id "some-id", :str "string"}
             dresser (db/transact! (impl-f)
-                                  (fn [dresser] (db/upsert! dresser @drawer1 doc))
+                                  (fn [dresser] (db/upsert! dresser :drawer1 doc))
                                   {:result? false})] ; <-- return the dresser object
 
         ; Now make a few changes inside a transaction
         (try
           (db/tx-> dresser
-            (db/assoc-at! @drawer1 "some-id" [:str2] "string 2")
-            (db/update-at! @drawer1 [:str] #(throw (ex-info "Test exception" {}))))
+            (db/assoc-at! :drawer1 "some-id" [:str2] "string 2")
+            (db/update-at! :drawer1 [:str] #(throw (ex-info "Test exception" {}))))
           (catch Exception _e))
 
-        (is (= doc (db/fetch-by-id dresser @drawer1 "some-id")))))))
+        (is (= doc (db/fetch-by-id dresser :drawer1 "some-id")))))))
 
 (defn test--assoc-at
   [impl-f]
   (testing "Assoc-at existing document"
     (db/tx-let [tx (impl-f)]
-        [id (db/add! tx @drawer1 {:a {:b {:c 1}}, :z 1})]
+        [id (db/add! tx :drawer1 {:a {:b {:c 1}}, :z 1})]
       (-> tx
-          (is-> (db/assoc-at! @drawer1 id [:a :b :c] {:d "hello"})
+          (is-> (db/assoc-at! :drawer1 id [:a :b :c] {:d "hello"})
                 (= {:d "hello"})
                 "Returns the value that was assoc'd-in.")
-          (is-> (db/fetch-by-id @drawer1 id {:only [:id]})
+          (is-> (db/fetch-by-id :drawer1 id {:only [:id]})
                 (#(some? (:id %))))
-          (is-> (db/fetch-by-id @drawer1 id {:only [:a :z]})
+          (is-> (db/fetch-by-id :drawer1 id {:only [:a :z]})
                 (= {:a {:b {:c {:d "hello"}}}, :z 1}))
           (testing-> "nil isn't special"
-            (db/assoc-at! @drawer1 id [:a :b :c] nil)
-            (is-> (db/fetch-by-id @drawer1 id) (= {:id id, :z 1, :a {:b {:c nil}}})))
+            (db/assoc-at! :drawer1 id [:a :b :c] nil)
+            (is-> (db/fetch-by-id :drawer1 id) (= {:id id, :z 1, :a {:b {:c nil}}})))
           (testing-> "empty path"
-            (db/assoc-at! @drawer1 id [] {:a "hello"})
-            (is-> (db/fetch-by-id @drawer1 id) (= {:id id :a "hello"}))))))
+            (db/assoc-at! :drawer1 id [] {:a "hello"})
+            (is-> (db/fetch-by-id :drawer1 id) (= {:id id :a "hello"}))))))
 
   (testing "Assoc-at creates new document"
     (db/tx-let [tx (impl-f)]
         [id "my-id"]
       (-> tx
-          (is-> (db/assoc-at! @drawer1 id [:a :b :c] {:d "hello"})
+          (is-> (db/assoc-at! :drawer1 id [:a :b :c] {:d "hello"})
                 (= {:d "hello"})
                 "Returns the value that was assoc'd-in.")
 
-          (is-> (db/fetch-by-id @drawer1 id)
+          (is-> (db/fetch-by-id :drawer1 id)
                 (= {:a {:b {:c {:d "hello"}}} :id id}))))))
 
 (defn test--get-at
@@ -467,50 +452,50 @@ time and a drawer-object the other half."
   (testing "Get-at"
     (db/tx-let [tx (impl-f)]
         [doc {:a {:b {:c 1}}, :z 1}
-         id (db/add! tx @drawer1 doc)]
+         id (db/add! tx :drawer1 doc)]
       (-> tx
-          (is-> (db/get-at @drawer1 id [:a :b :c]) (= 1))
-          (is-> (db/get-at @drawer1 id [:a :b :c :d]) nil?)
-          (is-> (db/get-at @drawer1 id []) (= (assoc doc :id id)))))))
+          (is-> (db/get-at :drawer1 id [:a :b :c]) (= 1))
+          (is-> (db/get-at :drawer1 id [:a :b :c :d]) nil?)
+          (is-> (db/get-at :drawer1 id []) (= (assoc doc :id id)))))))
 
 (defn test--update-at
   [impl-f]
   (testing "Update-at"
     (db/tx-let [tx (impl-f)]
-        [id (db/add! tx @drawer1 {:a {:b {:c 1}}, :z 1})]
+        [id (db/add! tx :drawer1 {:a {:b {:c 1}}, :z 1})]
       (-> tx
-          (is-> (db/update-at! @drawer1 id [:a :b :c] + 1 1 1) (= 4)
+          (is-> (db/update-at! :drawer1 id [:a :b :c] + 1 1 1) (= 4)
                 "Returns the value that was updated-in.")
-          (is-> (db/get-at @drawer1 id [:a :b :c]) (= 4))
-          (db/update-at! @drawer1 id [:a :b] dissoc :c)
-          (is-> (db/get-at @drawer1 id [:a :b :c]) nil?)
+          (is-> (db/get-at :drawer1 id [:a :b :c]) (= 4))
+          (db/update-at! :drawer1 id [:a :b] dissoc :c)
+          (is-> (db/get-at :drawer1 id [:a :b :c]) nil?)
           (testing-> "Can't remove document-id"
-            (db/update-at! @drawer1 id [:a :b] dissoc :id)
-            (is-> (db/get-at @drawer1 id [:id]) (= id)))
+            (db/update-at! :drawer1 id [:a :b] dissoc :id)
+            (is-> (db/get-at :drawer1 id [:id]) (= id)))
           (testing-> "nil result"
-            (db/update-at! @drawer1 id [:a :b :c] (constantly nil))
-            (is-> (db/fetch-by-id @drawer1 id) (= {:id id, :z 1, :a {:b {:c nil}}})))
+            (db/update-at! :drawer1 id [:a :b :c] (constantly nil))
+            (is-> (db/fetch-by-id :drawer1 id) (= {:id id, :z 1, :a {:b {:c nil}}})))
           ;; (testing-> "nil doc ID"
-          ;;   (db/update-at! @drawer1 nil [:a :b :c] (constantly nil))
-          ;;   (is-> (db/fetch-by-id @drawer1 id) (= {:id id, :z 1, :a {:b {:c nil}}})))
+          ;;   (db/update-at! :drawer1 nil [:a :b :c] (constantly nil))
+          ;;   (is-> (db/fetch-by-id :drawer1 id) (= {:id id, :z 1, :a {:b {:c nil}}})))
           (testing-> "Empty path"
-            (is-> (db/update-at! @drawer1 id [] merge {:a 1})
+            (is-> (db/update-at! :drawer1 id [] merge {:a 1})
                   (= {:id id, :a 1, :z 1})))))))
 
 (defn test--dissoc-at
   [impl-f]
   (testing "dissoc-at"
     (db/tx-let [tx (impl-f)]
-        [id (db/add! tx @drawer1 {:a {:b {:c1 1, :c2 2}}, :z 1})]
+        [id (db/add! tx :drawer1 {:a {:b {:c1 1, :c2 2}}, :z 1})]
       (-> tx
-          (is-> (db/dissoc-at! @drawer1 id [:a :b] :c1) nil?)
-          (is-> (db/get-at @drawer1 id [:a :b]) (= {:c2 2}))
+          (is-> (db/dissoc-at! :drawer1 id [:a :b] :c1) nil?)
+          (is-> (db/get-at :drawer1 id [:a :b]) (= {:c2 2}))
           (testing-> "empty path"
-            (db/dissoc-at! @drawer1 id [] :a)
-            (is-> (db/get-at @drawer1 id []) (= {:id id :z 1})))
+            (db/dissoc-at! :drawer1 id [] :a)
+            (is-> (db/get-at :drawer1 id []) (= {:id id :z 1})))
           (testing-> "Can't remove document-id"
-            (db/dissoc-at! @drawer1 id [] :id)
-            (is-> (db/get-at @drawer1 id []) :id))))))
+            (db/dissoc-at! :drawer1 id [] :id)
+            (is-> (db/get-at :drawer1 id []) :id))))))
 
 (defn test--replace
   [impl-f]
@@ -518,51 +503,51 @@ time and a drawer-object the other half."
     (db/tx-let [tx (impl-f)]
         [doc1 {:a 1 :b "String"}
          new-data {:data [1 2 3]}
-         id (db/add! tx @drawer1 doc1)]
+         id (db/add! tx :drawer1 doc1)]
       (-> tx
-          (is-> (db/replace! @drawer1 id new-data) (= (assoc new-data :id id)))
-          (is-> (db/fetch-by-id @drawer1 id) (= (assoc new-data :id id)))
+          (is-> (db/replace! :drawer1 id new-data) (= (assoc new-data :id id)))
+          (is-> (db/fetch-by-id :drawer1 id) (= (assoc new-data :id id)))
 
           (testing-> "Can't overwrite document-id"
-            (db/replace! @drawer1 id {:id "new-id"})
-            (is-> (db/fetch-by-id @drawer1 id) (= {:id id}))
-            (is-> (db/fetch-by-id @drawer1 "new-id") nil?))))))
+            (db/replace! :drawer1 id {:id "new-id"})
+            (is-> (db/fetch-by-id :drawer1 id) (= {:id id}))
+            (is-> (db/fetch-by-id :drawer1 "new-id") nil?))))))
 
 (defn test--drop
   [impl-f]
   (testing "Drop"
-    (let [d1 @drawer1]
+    (let [d1 :drawer1]
       (db/tx-> (impl-f)
-        (db/add! @drawer1 {:a 1})
-        (db/add! @drawer1 {:b 2})
-        (db/add! @drawer2 {:c 3})
+        (db/add! :drawer1 {:a 1})
+        (db/add! :drawer1 {:b 2})
+        (db/add! :drawer2 {:c 3})
         (is-> (db/drop! d1) (= d1))
-        (is-> (db/all-ids @drawer1) empty?)
-        (is-> (db/all-ids @drawer2) seq)))))
+        (is-> (db/all-ids :drawer1) empty?)
+        (is-> (db/all-ids :drawer2) seq)))))
 
 (defn test--all-ids
   [impl-f]
   (testing "All-ids"
     (let [docs [{:id 1} {:id 2} {:id 3}]]
       (db/tx-> (impl-f)
-        (db/upsert-many! @drawer1 docs)
-        (is-> (db/all-ids @drawer1) (= (map :id docs)))))))
+        (db/upsert-many! :drawer1 docs)
+        (is-> (db/all-ids :drawer1) (= (map :id docs)))))))
 
 (defn test--delete
   [impl-f]
   (testing "Delete"
     (let [[doc1 :as docs] [{:id 1} {:id 2} {:id 3}]]
       (db/tx-> (impl-f)
-        (db/upsert-many! (dd/drawer @drawer1) docs)
-        (is-> (db/delete! @drawer1 nil) nil?)
-        (is-> (db/delete! @drawer1 :doesnt-exist) (= :doesnt-exist)
+        (db/upsert-many! :drawer1 docs)
+        (is-> (db/delete! :drawer1 nil) nil?)
+        (is-> (db/delete! :drawer1 :doesnt-exist) (= :doesnt-exist)
               "Doesn't throw when deleting a non-existing document.")
-        (is-> (db/delete! @drawer1 1) (= 1) "Returns id.")
-        (is-> (db/delete! (dd/drawer @drawer1) 2) (= 2) "Returns id.")
-        (is-> (db/fetch-by-id @drawer1 1) nil?)
-        (is-> (db/fetch-by-id @drawer1 2) nil?)
-        (is-> (db/fetch-by-id @drawer1 3) some?)
-        (is-> (db/upsert! @drawer1 doc1) some?)))))
+        (is-> (db/delete! :drawer1 1) (= 1) "Returns id.")
+        (is-> (db/delete! :drawer1 2) (= 2) "Returns id.")
+        (is-> (db/fetch-by-id :drawer1 1) nil?)
+        (is-> (db/fetch-by-id :drawer1 2) nil?)
+        (is-> (db/fetch-by-id :drawer1 3) some?)
+        (is-> (db/upsert! :drawer1 doc1) some?)))))
 
 (defn test--all-drawers
   [impl-f]
@@ -570,22 +555,22 @@ time and a drawer-object the other half."
     (db/tx-> (impl-f)
       (is-> (db/all-drawers) empty?)
 
-      (db/add! @drawer1 {:id 1})
-      (db/add! @drawer1 {:id 1})
-      (is-> (db/all-drawers) (= [(dd/key @drawer1)])
+      (db/add! :drawer1 {:id 1})
+      (db/add! :drawer1 {:id 1})
+      (is-> (db/all-drawers) (= [:drawer1])
             "No duplicate drawers")
 
-      (db/add! @drawer2 {:id 1})
-      (is-> (db/all-drawers) (u= [(dd/key @drawer1) (dd/key @drawer2)])))))
+      (db/add! :drawer2 {:id 1})
+      (is-> (db/all-drawers) (u= [:drawer1 :drawer2])))))
 
 (defn test--has-drawer
   [impl-f]
   (testing "has-drawer"
     (db/tx-> (impl-f)
-      (is-> (db/has-drawer? @drawer1) not)
+      (is-> (db/has-drawer? :drawer1) not)
 
-      (db/add! @drawer1 {:id 1})
-      (is-> (db/has-drawer? @drawer1) true?))))
+      (db/add! :drawer1 {:id 1})
+      (is-> (db/has-drawer? :drawer1) true?))))
 
 (defn test--dresser?
   [impl-f]
@@ -626,10 +611,10 @@ time and a drawer-object the other half."
           docs (for [i (range 1000)]
                  {:id i})
           dresser (db/raw-> (impl-f)
-                    (db/upsert-many! @drawer1 docs))]
+                    (db/upsert-many! :drawer1 docs))]
       ;; If the transaction was closed before the seq is realized,
       ;; this should throw an exception.
-      (is (= qty (count (db/fetch dresser @drawer1 {})))))))
+      (is (= qty (count (db/fetch dresser :drawer1 {})))))))
 
 (defn test--types
   [impl-f]
@@ -645,8 +630,8 @@ time and a drawer-object the other half."
                 :keyword :keyword
                 :inst    inst}]
       (db/tx-let [tx (impl-f)]
-          [id (db/add! tx @drawer1 {:data data})
-           ret (db/fetch-by-id tx @drawer1 id)]
+          [id (db/add! tx :drawer1 {:data data})
+           ret (db/fetch-by-id tx :drawer1 id)]
         (is (= data (:data ret)))
         tx))))
 
@@ -657,7 +642,7 @@ time and a drawer-object the other half."
    (testing "Transactions don't blow up the stack"
      (let [add-doc! (fn [dresser idx]
                       (db/with-tx [tx dresser]
-                        (db/upsert! tx @drawer1 {:id idx})))]
+                        (db/upsert! tx :drawer1 {:id idx})))]
        (db/with-tx [tx (impl-f)]
          (reduce (fn [tx' idx]
                    (add-doc! tx' idx))

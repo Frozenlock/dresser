@@ -4,7 +4,6 @@
   (:require [dresser.base :as db]
             [dresser.extension :as ext]
             [dresser.protocols :as dp]
-            [dresser.drawer :as dd]
             [dresser.extensions.drawer-registry :as d-reg]))
 
 
@@ -12,8 +11,8 @@
   "Returns a ref-drawer. Similar to the drawer object, but also contains
   the dresser-id and the drawer-id"
   [{:keys [drawer-key drawer-id dresser-id] :as args}]
-  (some-> (dd/drawer drawer-key) ; TODO: test `some->`
-          (merge args)))
+  args
+  )
 
 (defn- ref*
   ([dresser drawer doc-id upsert?]
@@ -41,9 +40,7 @@
   (let [[dresser-id drawer-id _doc-id] ref]
     (db/tx-let [tx dresser]
         [d-key (d-reg/drawer-key tx drawer-id)]
-      (db/with-result tx (ref-drawer {:drawer-id  drawer-id
-                                      :drawer-key d-key
-                                      :dresser-id dresser-id})))))
+      (db/with-result tx d-key))))
 
 (defn doc-id
   "Returns the document ID associated with this ref."

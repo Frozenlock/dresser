@@ -3,8 +3,8 @@
             [dresser.protocols :as dp]
             [dresser.impl.hashmap :as hm]
             [dresser.impl.atom :as at]
-            [dresser.drawer :as dd]
-            [dresser.test :as dt]))
+            [dresser.test :as dt]
+            [dresser.extension :as ext]))
 
 
 ;; TODO: should we use locks? Or add a `transact` option to NOT retry

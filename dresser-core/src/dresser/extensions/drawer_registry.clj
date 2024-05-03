@@ -1,8 +1,7 @@
 (ns dresser.extensions.drawer-registry
   (:require [dresser.base :as db]
             [dresser.extension :as ext]
-            [dresser.protocols :as dp]
-            [dresser.drawer :as dd]))
+            [dresser.protocols :as dp]))
 
 ;; The drawer registry adds the ability to attach durable metadata to
 ;; a drawer, such as a drawer-id, schemas, creation date, etc.
@@ -23,14 +22,13 @@
   Drawers can be renamed, but IDs should be forever."
   [dresser drawer upsert?]
   (db/tx-let [tx dresser]
-      [drawer-key (dd/key drawer)
-       d-ids (db/get-at tx key->ids drawer-key [:d-ids])
+      [d-ids (db/get-at tx key->ids drawer [:d-ids])
        id (first d-ids)]
     (cond
       id (db/with-result tx id)
       upsert? (let [[tx new-id] (db/dr (db/gen-id! tx registry))]
-                (-> (db/upsert! tx key->ids {:id drawer-key, :d-ids [new-id]})
-                    (db/upsert! registry {:id new-id, :key drawer-key})
+                (-> (db/upsert! tx key->ids {:id drawer, :d-ids [new-id]})
+                    (db/upsert! registry {:id new-id, :key drawer})
                     (db/with-result new-id)))
       :else (db/with-result tx nil))))
 
@@ -42,28 +40,25 @@
 (defn- rename-drawer-in-registry!
   [dresser drawer new-drawer]
   (db/tx-let [tx dresser]
-      [drawer-key (dd/key drawer)
-       new-drawer-key (dd/key new-drawer)
-       exists? (drawer-id tx new-drawer false)
+      [exists? (drawer-id tx new-drawer false)
        _ (when exists? (throw (ex-info "Can't rename to an existing drawer" {})))
-       d-ids (db/get-at tx key->ids drawer-key [:d-ids])]
+       d-ids (db/get-at tx key->ids drawer [:d-ids])]
     (if (not-empty d-ids)
       (-> (reduce (fn [tx' d-id]
-                    (db/assoc-at! tx registry d-id [:key] new-drawer-key))
+                    (db/assoc-at! tx registry d-id [:key] new-drawer))
                   tx d-ids)
-          (db/assoc-at! key->ids new-drawer-key [:d-ids] d-ids)
-          (db/delete! key->ids drawer-key))
+          (db/assoc-at! key->ids new-drawer [:d-ids] d-ids)
+          (db/delete! key->ids drawer))
       tx)))
 
 (defn- drop-drawer!
   [dresser drawer]
   (db/tx-let [tx dresser]
-      [drawer-key (dd/key drawer)
-       d-ids (db/get-at tx key->ids drawer-key [:d-ids])]
+      [d-ids (db/get-at tx key->ids drawer [:d-ids])]
     (-> (reduce (fn [tx' d-id]
                   (db/delete! tx' registry d-id))
                 tx d-ids)
-        (db/delete! key->ids drawer-key))))
+        (db/delete! key->ids drawer))))
 
 (ext/defext drawer-registry
   []
