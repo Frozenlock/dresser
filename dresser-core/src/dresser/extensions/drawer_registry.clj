@@ -77,4 +77,7 @@
     `dp/-drop          {:closing (fn [tx drawer]
                                    (-> tx
                                        (drop-drawer! drawer)
-                                       (db/with-result drawer)))}}})
+                                       (db/with-result drawer)))}
+    `dp/-drawer-key    {:wrap (fn [_method]
+                                (fn [tx drawer-id]
+                                  (drawer-key tx drawer-id)))}}})

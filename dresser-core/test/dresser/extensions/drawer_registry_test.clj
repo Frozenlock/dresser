@@ -60,4 +60,7 @@
           (db/drop! :d1)
           (dt/is-> (d-reg/drawer-id :d1 false) nil?)
           (dt/is-> (d-reg/drawer-key d1-id) nil?)
-          (dt/is-> (d-reg/drawer-key d2-id) (= :d2))))))
+          (dt/is-> (d-reg/drawer-key d2-id) (= :d2))
+          (dt/testing-> "'drawer-key' dresser method is correctly overwritten"
+            (dt/is-> (db/drawer-key d1-id) nil?)
+            (dt/is-> (db/drawer-key d2-id) (= :d2)))))))

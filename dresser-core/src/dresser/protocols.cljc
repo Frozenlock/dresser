@@ -46,7 +46,7 @@ or they can be constructed using the `DresserFundamental` methods. See
 `dresser.impl.optional`."
   :extend-via-metadata true
   (-fetch-by-id ^:tx [dresser drawer id only where]
-                "Fetches documents from drawer. See also `fetch`.")
+                "Fetches a document from drawer. See also `fetch`.")
   (-fetch-count ^:tx [dresser drawer where])
   (-update-at ^:tx ^:w [dresser drawer id ks f args]
               "Similar to `clojure.core/update-in`. Returns the value that was updated-in.")
@@ -63,6 +63,7 @@ or they can be constructed using the `DresserFundamental` methods. See
   (-upsert-many ^:tx ^:w [dresser drawer docs]
                 "Insert many documents, each containing an `:id`. Returns documents")
   (-dresser-id ^:tx [dresser] "Returns the dresser ID")
+  (-drawer-key ^:tx [dresser drawer-id] "Returns the drawer key. Mostly for implementing the drawer registry.")
   (-rename-drawer ^:tx ^:w [dresser drawer new-drawer] "Returns new-drawer.")
   (-has-drawer? ^:tx [dresser drawer] "Returns true if the dresser has the drawer."))
 
