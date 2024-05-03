@@ -5,7 +5,6 @@
             [clojure.string :as str]
             [clojure.walk :as w]
             [dresser.base :as db]
-            [dresser.drawer :as dd]
             [dresser.impl.mongodb-test-utils :as tu]
             [dresser.impl.optional :as opt]
             [dresser.protocols :as dp]
@@ -174,7 +173,7 @@
 
 (defn- encode-drawer
   [drawer]
-  (encode (dd/key drawer)))
+  (encode drawer))
 
 
 ;;; This is infuriating.
@@ -233,12 +232,12 @@
   ([[db session *cache] drawer upsert?]
    (let [lookup #(cw/lookup-or-miss
                   *cache
-                  (dd/key drawer)
+                  drawer
                   (fn [_] (raw-drawer->coll [db session] drawer upsert?)))
          result (lookup)]
      (if (and (nil? result)
               upsert?)
-       (do (cw/evict *cache (dd/key drawer))
+       (do (cw/evict *cache drawer)
            (lookup))
        result))))
 
@@ -277,8 +276,8 @@
   ;; Clearing the cache can be done after because we are in a
   ;; transaction.  In fact we may still fail later on and the cache
   ;; would have been 'wrongly' cleared.
-  (cw/evict *cache (dd/key drawer))
-  (cw/evict *cache (dd/key new-drawer))
+  (cw/evict *cache drawer)
+  (cw/evict *cache new-drawer)
   (update tx :post-tx-fns conj #(drop-expired-collections! db)))
 
 (dp/defimpl -rename-drawer
@@ -380,7 +379,7 @@
   [{:keys [db session *cache] :as dresser} drawer]
   ;; Clearing the cache must be first because we are not in a
   ;; transaction.
-  (cw/evict *cache (dd/key drawer))
+  (cw/evict *cache drawer)
   (mc/find-one-and-update db
                           drawers-registry
                           {:drawer (encode-drawer drawer)}
@@ -560,5 +559,3 @@
                               (add-rnd-user! tx idx))
                             tx
                             (range 1000))))))))
-
-
