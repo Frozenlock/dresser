@@ -234,7 +234,8 @@
               `dp/-start              -always
               `dp/-stop               -always
               `dp/-started?           -always
-              `dp/-fetch-count        never-f}
+              `dp/-fetch-count        never-f
+              `dp/-invoke             -always}
         methods-without-permission (seq (remove (set (keys m->p))
                                                 dp/dresser-symbols))]
     (when methods-without-permission

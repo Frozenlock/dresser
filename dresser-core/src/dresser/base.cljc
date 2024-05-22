@@ -237,8 +237,11 @@
     (dp/-dissoc-at drawer id ks dissoc-ks)))
 
 (defn- only-sugar
-  "If provided with a vector, convert it into a simple only map.
-  (only-sugar [:a :b]) => {:a true, :b true}"
+  "If provided with a collection, converts it into a simple only map.
+  (only-sugar [:a :b]) => {:a true, :b true}
+
+  Also converts any node collection:
+  (only-sugar {:z {[:a :b] [:c]}}) => {:z {[:a :b] {:c true}}}"
   [only]
   (cond
     (nil? only) nil
@@ -369,16 +372,6 @@
 
 ;;; query ops
 
-
-;; shorthand versions
-;; (defn lt [x] [::lt x])
-;; (defn lte [x] [::lte x])
-;; (defn gt [x] [::gt x])
-;; (defn gte [x] [::gte x])
-;; (defn exists?
-;;   ([] (exists? true))
-;;   ([bool] [::exists? bool]))
-
 (def lt ::lt)
 (def lte ::lte)
 (def gt ::gt)
@@ -444,3 +437,82 @@
 (defn with-last-tx-failure
   [dresser data]
   (update-temp-data dresser assoc :last-tx-failure data))
+
+
+
+(defn to-edn
+  "Returns a simple hashmap (EDN) version of the dresser."
+  [dresser]
+  (tx-let [tx dresser]
+      [drawers (all-drawers tx)
+       _ (reduce (fn [tx' drawer-key]
+                   (let [accu (result tx')
+                         [tx' docs] (dr (fetch tx' drawer-key))
+                         m (into {} (for [d docs]
+                                      [(:id d) d]))]
+                     (with-result tx' (assoc accu drawer-key m))))
+                 (with-result tx {})
+                 drawers)]
+    tx))
+
+;; (defmethod print-method ::dresser
+;;   [v ^java.io.Writer w]
+;;   (.write w (str v)))
+
+
+(deftype DresserMap [m meta]
+  clojure.lang.IPersistentMap
+  ;; Basic map functionality
+  (assoc [this k v]
+    (DresserMap. (assoc m k v) meta))
+  (valAt [this k]
+    (get m k))
+  (valAt [this k default-value]
+    (get m k default-value))
+  (containsKey [this k]
+    (contains? m k))
+  (equiv [this other]
+    (= m other))
+  (count [this]
+    (count m))
+  (seq [this]
+    (seq m))
+  ;; Method for removing an entry, analogous to 'dissoc'
+  (without [this k]
+    (DresserMap. (dissoc m k) meta))
+
+  clojure.lang.IPersistentCollection
+  ;; Collection functionality for consistency
+  (cons [this o]
+    (DresserMap. (conj m o) meta))
+
+  ;; Unified empty method for both IPersistentMap and IPersistentCollection
+  (empty [this]
+    (DresserMap. (empty m) meta))
+
+  clojure.lang.Associative
+  ;; Extra Associative interface requirements
+  (entryAt [this k]
+    (find m k))
+
+  clojure.lang.IMeta
+  ;; Metadata functions
+  (meta [this]
+    meta)
+
+  clojure.lang.IObj
+  ;; Support for metadata
+  (withMeta [this new-meta]
+    (DresserMap. m new-meta))
+
+  clojure.lang.IFn
+  ;; Function invocation support
+  (invoke [this]
+    (dp/-invoke this []))
+  (invoke [this arg]
+    (dp/-invoke this arg))
+  (invoke [this arg1 arg2]
+    (dp/-invoke this arg1 arg2)))
+
+(defn ->DresserMap [m]
+  (DresserMap. m nil))

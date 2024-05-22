@@ -52,6 +52,7 @@
      (-> {:*source (atom inner-dresser)
           :data    (db/temp-data inner-dresser)
           :lock    :lock}
+         db/->DresserMap
          (with-meta (merge
                      (meta inner-dresser)
                      atom-impl))))))
