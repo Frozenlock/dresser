@@ -102,11 +102,6 @@
   [tx drawer-id]
   (db/with-result tx drawer-id))
 
-
-(dp/defimpl -invoke
-  [dresser & args]
-  (throw (ex-info "Dresser invocation is undefined" {})))
-
 ;; Drawer stuff. Might migrate later.
 
 (def drawer-registry :drs_drawer-registry)
@@ -141,5 +136,4 @@
     -rename-drawer
     -replace
     -update-at
-    -upsert-many
-    -invoke]))
+    -upsert-many]))

@@ -10,7 +10,6 @@
   - Integrates seamlessly with the existing dresser library.
   - Supports transactional operations for consistent data manipulation.
   - Allows for intuitive path-based data navigation and modification.
-  - Can be invoked as functions to fetch or modify data directly.
 
   Example:
 
@@ -64,10 +63,11 @@
                    :doc-id doc-id}))))
 
 (defn get-at
-  ([lens] (get-at lens []))
-  ([lens ks]
+  ([lens] (get-at lens [] nil))
+  ([lens ks] (get-at lens ks nil))
+  ([lens ks only]
    (let [{:keys [drawer doc-id path]} (ref lens)]
-     (db/get-at lens drawer doc-id (into (or path []) ks)))))
+     (db/get-at lens drawer doc-id (into (or path []) ks) only))))
 
 (defn update-at!
   [lens ks f & args]
@@ -96,7 +96,7 @@
 
 (defn focus
   "Appends the path to the current reference path, or sets the same
-reference as `ref-lens`."
+  reference as `ref-lens`."
   {:arglists '[[lens path]
                [dresser-or-lens ref-lens]]}
   [dresser-or-lens path-or-lens]
@@ -130,20 +130,6 @@ reference as `ref-lens`."
   [dresser]
   (db/dresser? dresser))
 
-(defn invoke
-  ([dresser]
-   (get-at dresser))
-  ([dresser ks]
-   (get-at dresser ks))
-  ([dresser ks only]
-   (let [{:keys [drawer doc-id path]} (ref dresser)
-         only (if (seq path)
-                (assoc-in {} path only)
-                only)]
-     (db/tx-> dresser
-       (db/fetch-by-id drawer doc-id {:only only})
-       (db/update-result get-in path)))))
-
 
 (ext/defext lenses
   "A dresser variation which can contain a reference to a document or
@@ -151,10 +137,9 @@ subdocument. When called as a function, it returns the data
 located at the reference, as if called with `get-at`."
   []
   {:deps    []
-   :init-fn #(vary-meta % merge {`dp/-invoke invoke
-                                 `-ref       (fn [dresser]
+   :init-fn #(vary-meta % merge {`-ref     (fn [dresser]
                                                (db/temp-data dresser [::ref]))
-                                 `-set-ref   (fn [dresser ref]
+                                 `-set-ref (fn [dresser ref]
                                                (db/assoc-temp-data dresser ::ref ref))})})
 
 (comment

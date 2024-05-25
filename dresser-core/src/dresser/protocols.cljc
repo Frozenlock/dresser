@@ -65,11 +65,7 @@ or they can be constructed using the `DresserFundamental` methods. See
   (-dresser-id ^:tx [dresser] "Returns the dresser ID")
   (-drawer-key ^:tx [dresser drawer-id] "Returns the drawer key. Mostly for implementing the drawer registry.")
   (-rename-drawer ^:tx ^:w [dresser drawer new-drawer] "Returns new-drawer.")
-  (-has-drawer? ^:tx [dresser drawer] "Returns true if the dresser has the drawer.")
-
-  (-invoke [dresser]
-           [dresser arg1]
-           [dresser arg1 arg2]))
+  (-has-drawer? ^:tx [dresser drawer] "Returns true if the dresser has the drawer."))
 
 
 (defpro DresserLifecycle
@@ -107,10 +103,9 @@ or they can be constructed using the `DresserFundamental` methods. See
            (throw (ex-info "Method not found" {:method    qualified-symbol
                                                :potential (sort (keys dresser-methods))})))
          (when-not (= (count args) (count expected-args))
-           (when-not (some #(= '& %) args)
-             (throw (ex-info "Arguments mismatch" {:method        qualified-symbol
-                                                   :provided-args args
-                                                   :expected-args expected-args}))))))
+           (throw (ex-info "Arguments mismatch" {:method        qualified-symbol
+                                                 :provided-args args
+                                                 :expected-args expected-args})))))
 
      (defmacro with-source
        "Attaches the :line, :column and :file metadata."

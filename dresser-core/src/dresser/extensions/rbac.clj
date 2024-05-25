@@ -218,8 +218,8 @@
                                                                      [k :?])))})
               `dp/-drop               never-f
               `dp/-gen-id             never-f
-              `dp/-get-at             (fn [drawer id ks]
-                                        {:read (assoc-in {} (into [drawer id] ks) :?)})
+              `dp/-get-at             (fn [drawer id ks only]
+                                        {:read (assoc-in {} (into [drawer id] ks) (or only :?))})
               `dp/-has-drawer?        never-f
               `dp/-replace            (fn [drawer id _data]
                                         {:write {drawer {id :?}}})
@@ -234,8 +234,7 @@
               `dp/-start              -always
               `dp/-stop               -always
               `dp/-started?           -always
-              `dp/-fetch-count        never-f
-              `dp/-invoke             -always}
+              `dp/-fetch-count        never-f}
         methods-without-permission (seq (remove (set (keys m->p))
                                                 dp/dresser-symbols))]
     (when methods-without-permission

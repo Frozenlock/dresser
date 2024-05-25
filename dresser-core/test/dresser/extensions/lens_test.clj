@@ -41,13 +41,6 @@
     (is (not (lens/lens? {})))
     (is (lens/lens? (lens/lenses (test-dresser)))))
 
-  (testing "lens as function"
-    (let [doc1 {:title "test1", :a {:b {:c "node"}}}
-          lens (db/raw-> (lens/lenses (test-dresser))
-                 (lens/add! :docs doc1))]
-      (is (lens) (= (assoc doc1 :id 1)))
-      (is (lens [:a :b :c]) (= "node"))))
-
   (testing "update-at!"
     (db/tx-> (lens/lenses (test-dresser))
       (lens/set-ref! {:drawer :docs, :doc-id 1, :path [:a :b]})
