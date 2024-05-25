@@ -236,20 +236,26 @@
   (tx-> dresser
     (dp/-dissoc-at drawer id ks dissoc-ks)))
 
-(defn- only-sugar
+(defn only-sugar
   "If provided with a collection, converts it into a simple only map.
   (only-sugar [:a :b]) => {:a true, :b true}
 
   Also converts any node collection:
   (only-sugar {:z {[:a :b] [:c]}}) => {:z {[:a :b] {:c true}}}"
   [only]
-  (cond
-    (nil? only) nil
-    (map? only) (->> (for [[k v] only]
-                       [k (if (coll? v) (only-sugar v) v)])
-                     (into {}))
-    (coll? only) (reduce #(assoc %1 %2 true) {} only)
-    :else (throw (ex-info "Expects a map or a coll" {}))))
+  (letfn [(expand [only]
+            (cond
+              (nil? only) nil
+              (map? only) (if (::only-expanded? (meta only))
+                            only
+                            (reduce-kv (fn [m k v]
+                                         (assoc m k (if (coll? v) (expand v) v)))
+                                       {} only))
+              (coll? only) (reduce #(assoc %1 %2 true) {} only)
+              :else (throw (ex-info "Expects a map or a coll" {}))))]
+    (some-> (expand only)
+            (vary-meta assoc ::only-expanded? true))))
+
 
 ;; {:sort :a}
 ;; {:sort {:a :desc}}
