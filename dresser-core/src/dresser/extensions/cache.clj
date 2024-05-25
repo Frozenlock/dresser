@@ -92,7 +92,7 @@
 
 (defn cache-get-at
   [cache-key get-at-method]
-  (fn [tx drawer id ks]
+  (fn [tx drawer id ks only]
     ;; Start a transaction with the cache dresser
     (let [cache-db (db/tx-let [cache-tx (db/temp-data tx [cache-key]) {:result? false}]
                        [valid-cache? (complete-doc? cache-tx drawer id ks)
@@ -106,7 +106,7 @@
                        (db/with-result cache-tx [tx cached-value])
                        ;; The current cache-tx must be put back into 'tx' before using it
                        (let [[tx value] (-> (db/update-temp-data tx assoc cache-key cache-tx)
-                                            (get-at-method drawer id ks)
+                                            (get-at-method drawer id ks only)
                                             (db/dr))
                              cache-tx (db/temp-data tx [cache-key])
                              cache-tx (set-cache-at! cache-tx drawer id ks value)]

@@ -273,6 +273,14 @@
    (tx-> dresser
      (dp/-fetch drawer (only-sugar only) limit where sort skip))))
 
+(defn get-at
+  {:doc (str (:doc (meta #'dp/-get-at)) tx-note)}
+  ([dresser drawer id ks]
+   (get-at dresser drawer id ks nil))
+  ([dresser drawer id ks only]
+   (tx-> dresser
+     (dp/-get-at drawer id ks (only-sugar only)))))
+
 
 ;; EXPERIMENTAL
 ;; Cannot be used inside a transaction.

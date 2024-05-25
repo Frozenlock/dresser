@@ -456,7 +456,10 @@
       (-> tx
           (is-> (db/get-at :drawer1 id [:a :b :c]) (= 1))
           (is-> (db/get-at :drawer1 id [:a :b :c :d]) nil?)
-          (is-> (db/get-at :drawer1 id []) (= (assoc doc :id id)))))))
+          (is-> (db/get-at :drawer1 id []) (= (assoc doc :id id)))
+          (testing-> " - Only"
+            (is-> (db/get-at :drawer1 id [] {:z :?}) (= {:z 1}))
+            (is-> (db/get-at :drawer1 id [:a :b] {:c :?}) (= {:c 1})))))))
 
 (defn test--update-at
   [impl-f]

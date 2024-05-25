@@ -26,16 +26,18 @@
 
   (testing "add! & get-at"
     (let [doc1 {:title "test1"}
-          doc2 {:title "test2"}]
+          doc2 {:title "test2", :a {:b1 1, :b2 2}}]
       (db/tx-> (lens/lenses (test-dresser))
         (dt/is-> (lens/add! :docs doc1) (= 1) "Returns doc-id")
         (dt/is-> (lens/get-at) (= (assoc doc1 :id 1)))
         (dt/is-> (lens/get-at [:title]) (:title doc1))
 
-        (dt/testing-> "Add! can use the lens' drawer for new doc"
+        (dt/testing-> "- Add! can use the lens' drawer for new doc"
           (dt/is-> (lens/add! doc2) (= 2) "Returns doc-id")
           (dt/is-> (lens/get-at) (= (assoc doc2 :id 2)))
-          (dt/is-> (lens/get-at [:title]) (:title doc2))))))
+          (dt/is-> (lens/get-at [:title]) (:title doc2))
+          (dt/testing-> "- Only"
+            (dt/is-> (lens/get-at [:a] {:b1 :?}) (= {:b1 1})))))))
 
   (testing "lens?"
     (is (not (lens/lens? {})))

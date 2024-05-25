@@ -41,9 +41,11 @@
       (db/with-result nil)))
 
 (dp/defimpl -get-at
-  [tx drawer id ks]
-  (let [only-m (when (seq ks)
-                 (reduce #(hash-map %2 %1) :? (reverse ks)))]
+  [tx drawer id ks only]
+  (let [only-m (if (seq ks)
+                 (reduce #(hash-map %2 %1) (or only :?)
+                         (reverse ks))
+                 only)]
     (-> tx
         (db/fetch-by-id drawer id {:only only-m})
         (db/update-result #(get-in % ks)))))

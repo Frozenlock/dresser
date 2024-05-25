@@ -58,7 +58,7 @@ or they can be constructed using the `DresserFundamental` methods. See
               "Dissoc the dissoc-keys from the value at located at ks. Returns nil.")
   (-drop ^:tx ^:w [dresser drawer] "Removes the drawer.")
   (-gen-id ^:tx ^:w [dresser drawer] "Generates an ID for a document in the given drawer.")
-  (-get-at ^:tx [dresser drawer id ks] "Similar to `clojure.core/get-in`, but for a drawer.")
+  (-get-at ^:tx [dresser drawer id ks only] "Similar to `clojure.core/get-in`, but for a drawer.")
   (-replace ^:tx ^:w [dresser drawer id data] "Replaces the document data. Returns the new document.")
   (-upsert-many ^:tx ^:w [dresser drawer docs]
                 "Insert many documents, each containing an `:id`. Returns documents")
