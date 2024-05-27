@@ -102,6 +102,11 @@
     (contains? data-entry field-key)
     (not (contains? data-entry field-key))))
 
+(declare where?)
+
+(defn- any
+  [data-entry field-key test-val]
+  (some #(where? data-entry {field-key %}) test-val))
 
 
 (def query-ops
@@ -110,7 +115,8 @@
    ::db/gt      gt
    ::db/gte     gte
    ::db/lt      lt
-   ::db/lte     lte})
+   ::db/lte     lte
+   ::db/any     any})
 
 
 (defn where?
@@ -125,6 +131,9 @@
 
                 (map? condition-val)
                 (where? value condition-val)
+
+                (= condition-key ::db/any) ;; any at top level
+                (some #(where? data %) condition-val)
 
                 :else
                 (= value condition-val))))]

@@ -391,6 +391,7 @@
 (def gt ::gt)
 (def gte ::gte)
 (def exists? ::exists?)
+(def any ::any)
 
 (defn ops?
   "True if key is a query operation"

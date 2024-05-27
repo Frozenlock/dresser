@@ -326,7 +326,28 @@
               (is-> (db/fetch :drawer1 {:where {:1 {db/lt 2}}}) (u= [d1 d2 d3]))
               (is-> (db/fetch :drawer1 {:where {:2 {db/lt 2}}}) (u= []))
               (is-> (db/fetch :drawer1 {:where {:1 {db/lte 2}}}) (u= [d1 d2 d3]))
-              (is-> (db/fetch :drawer1 {:where {:2 {db/lte 2}}}) (u= [d2 d3])))))
+              (is-> (db/fetch :drawer1 {:where {:2 {db/lte 2}}}) (u= [d2 d3])))
+
+            (testing-> " - any"
+              (testing-> " top level"
+                (is-> (db/fetch :drawer1 {:where {db/any
+                                                  [{:id {db/lte 2}}]}}) (u= [d1 d2]))
+                (is-> (db/fetch :drawer1 {:where {db/any
+                                                  [{:id {db/lte 2}}
+                                                   {:id {db/gte 3}}]}}) (u= [d1 d2 d3 d4]))
+                (is-> (db/fetch :drawer1 {:where {db/any
+                                                  [{:id {db/lte 2}}
+                                                   {:id {db/gte 3}}]}}) (u= [d1 d2 d3 d4])))
+              (testing-> " nested"
+                (is-> (db/fetch :drawer1
+                                {:where
+                                 {;; matches d1, d2 and d3
+                                  :1    1
+                                  ;; matches d3 and d4
+                                  db/any [{:sort {db/any [{:a {db/lt 3
+                                                               db/gt 1}}
+                                                          {:a 3}]}}]}})
+                      (u= [d3]))))))
 
         (testing-> "- Only"
           (is-> (db/fetch :drawer1 {:only {:id :?}}) (u= (for [{:keys [id]} docs]
