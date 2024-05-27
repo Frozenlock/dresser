@@ -105,18 +105,25 @@ While most functions allow for retrieval or update of a single document, `fetch`
 	- `lt`/`lte` 'less than' and 'less than or equal'.
 	- `gt`/`gte` 'greater than' and 'greater than or equal'.
 	- `exists?` Whether the field exists.
+	- `any` Whether any subquery matches.
 	- Equality condition is implied if no operator is provided.
     ```clojure
-	;; Fetches users with a name greater than "M" and where `:age` exists.
-	(db/fetch my-db :users {:where {:name {db/gt "M"}
-                                    :age {db/exists? true}}
-                            :only [:name]})
-	;=> ({:name "Martin"} {:name "Xander"})
+    ;; Fetches users with a name greater than "M" and where `:age` exists.
+    (db/fetch my-db :users {:where {:name {db/gt "M"}
+    				:age  {db/exists? true}}
+    			:only  [:name]})
+    ;=> ({:name "Martin"} {:name "Xander"})
 
-	;; Implied equality condition:
-	(db/fetch my-db :users {:where {:age 8}
-	                        :only [:name]})
-	;=> ({:name "Xander"})
+    ;; Implied equality condition:
+    (db/fetch my-db :users {:where {:age 8}
+    			:only  [:name]})
+    ;=> ({:name "Xander"})
+
+	;; Users with name "Bob" or age 55
+    (db/fetch my-db :users {:where {db/any [{:name "Bob"}
+    					{:age 55}]}
+    			:only  [:name :age]})
+    ;=> ({:name "Bob", :age 33} {:name "Felicia", :age 55})
 	```
 - `:sort` sorts the selected document by the given fields and directions.
 	```clojure
@@ -365,7 +372,7 @@ For example, an extension could leverage Malli to validate all the data going in
 
 ## License
 
-Copyright © 2023 Frozenlock
+Copyright © 2024 Frozenlock
 
 This program and the accompanying materials are made available under the
 terms of the Eclipse Public License 2.0 which is available at
