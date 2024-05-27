@@ -74,6 +74,47 @@
     (flatten-keys* {} [] m)))
 
 
+(defn- extract-ors
+  "Extracts $or conditions from the query.
+  Returns a tuple of the normal query and collected $or conditions."
+  [entry path ors]
+  (let [[normal-query _ collected-ors]
+        (reduce (fn [[acc curr-path collected] [k v]]
+                  (let [new-path (conj curr-path k)]
+                    (if (= k ::db/any)
+                      ;; Handle $or conditions
+                      (let [extracted-ors (map #(extract-ors % curr-path []) v)
+                            [normals or-conditions] (apply map vector extracted-ors)
+                            normalized (map #(when (seq %)
+                                               (if (seq curr-path)
+                                                 (assoc-in {} curr-path %)
+                                                 %)) normals)]
+                        [acc curr-path (with-meta (remove empty? (concat or-conditions normalized))
+                                         {::or true})])
+                      ;; Process normal entries
+                      (if (map? v)
+                        (let [[v' extracted] (extract-ors v new-path collected)
+                              updated-acc (if (not-empty v')
+                                            (assoc acc k v')
+                                            acc)]
+                          [updated-acc curr-path extracted])
+                        [(assoc acc k v) curr-path collected]))))
+                [{} path []]
+                entry)]
+    [normal-query collected-ors]))
+
+(defn expand-ors
+  "Expands $or conditions extracted from the query."
+  [query]
+  (let [[normal-query extracted-ors] (extract-ors query [] [])
+        or-function (fn or-function [ors]
+                      (if (::or (meta ors))
+                        {:$or (mapv or-function ors)}
+                        ors))]
+    (if (empty? extracted-ors)
+      normal-query
+      (merge normal-query (or-function extracted-ors)))))
+
 
 ;; Pretty shitty encode/decode. I'm open to suggestions.
 
@@ -300,7 +341,8 @@
   (->> (map #(if (string? %) (escape %) (encode %)) coll)
        (str/join "." )))
 
-(defn- prepare-where
+
+(defn- simple-prepare-where
   [where]
   (let [m (-> (id->mid where)
               (encode)
@@ -308,6 +350,18 @@
               (replace-query-ops))]
     (into {} (for [[k v] m]
                [(mongo-dotted-path k) v]))))
+
+(defn- prepare-where*
+  [where]
+  (let [prepared (simple-prepare-where (dissoc where :$or))]
+    (if-let [orq (:$or where)]
+      (assoc prepared :$or (mapv prepare-where* orq))
+      prepared)))
+
+(defn prepare-where
+  [where]
+  (-> (expand-ors where)
+      (prepare-where*)))
 
 
 (defn- prepare-only

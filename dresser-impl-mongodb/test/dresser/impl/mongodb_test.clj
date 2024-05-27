@@ -38,3 +38,22 @@
           doc-id (db/add! db drawer-key {:a 1, nested-key {:b 2}})]
       (is (= {:b 2}
              (db/get-at db drawer-key doc-id [nested-key]))))))
+
+(deftest test-expand-ors
+  (is (= (impl/expand-ors {:1 {:2 1}
+                           :a {::db/any [{:b {db/lt 3 db/gt 1}}
+                                         {:b 3}]}})
+         {:1   {:2 1}
+          :$or [{:a {:b {db/lt 3, db/gt 1}}}
+                {:a {:b 3}}]}))
+
+  (is (= (impl/expand-ors {:1 {:2 1}
+                           :a {::db/any [{:b {db/lt 3 db/gt 1}}
+                                         {:b 3}
+                                         {:c {db/any [{:d 1}
+                                                      {:d 2}]}}]}})
+         {:1   {:2 1}
+          :$or [{:$or [{:a {:c {:d 1}}}
+                       {:a {:c {:d 2}}}]}
+                {:a {:b {db/lt 3, db/gt 1}}}
+                {:a {:b 3}}]})))
