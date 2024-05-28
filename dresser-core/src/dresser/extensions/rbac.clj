@@ -122,7 +122,8 @@
   [dresser grp-ref roles]
   (if (empty? roles)
     (refs/dissoc-at! dresser grp-ref [:drs_rbac] :guest-roles)
-    (refs/assoc-at! dresser grp-ref [:drs_rbac :guest-roles] roles)))
+    (refs/assoc-at! dresser grp-ref [:drs_rbac :guest-roles]
+                    (mbr/roles-map roles))))
 
 (defn- members-with-permission
   "Returns a collection of member refs, or, if the permission is matched
@@ -137,7 +138,7 @@
        roles-w-perm (for [[role permissions] (merge default-roles role->perms)
                           :when (permitted? [permissions] request-map)]
                       role)]
-    (if (some (set guest-roles) roles-w-perm)
+    (if (some (or guest-roles {}) roles-w-perm)
       (db/with-result tx [::guest])
       (mbr/members-of-group-with-roles tx grp-ref roles-w-perm))))
 

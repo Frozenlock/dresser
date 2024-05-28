@@ -32,14 +32,22 @@
 
 ;; The group
 
+(defn roles-map
+  "Ensure the roles are in a map format."
+  [roles]
+  (if (map? roles) roles
+      (reduce #(assoc %1 %2 true) {} roles)))
+
 (defn upsert-group-member!
   "Sets the roles of member inside group.
   If no roles are provided, the member is removed.
 
+  'roles' can be a map of roles or a collection of those keys.
+
   Returns the grp-ref."
   [dresser grp-ref member-ref roles]
-  (assert (or (nil? roles) (seq? roles) (vector? roles)) "Roles should be nil, a seq or a vector")
-  (let [roles? (seq roles)]
+  (let [roles (roles-map roles)
+        roles? (not (empty? roles))]
     (db/tx-> dresser
       (cond->
           (not roles?) (-> (refs/update-at! grp-ref [:drs_memberships :member->roles] dissoc member-ref)
@@ -70,16 +78,20 @@
             tx members-refs)))
 
 (defn members-of-group-with-roles
-  "Returns the refs for members with any of the given roles."
+  "Returns the refs for members with any of the given roles.
+
+  'roles' can be a map of roles or a collection of those keys."
   [dresser grp-ref roles]
-  (assert (or (nil? roles) (seq? roles) (vector? roles)) "Roles should be nil, a seq or a vector")
-  (db/tx-> dresser
-    (refs/get-at grp-ref [:drs_memberships :member->roles])
-    (db/update-result #(->> (for [[member stored-roles] %
-                                  :when (some (set roles) stored-roles)]
-                              member)
-                            (remove nil?)
-                            (vec)))))
+  (let [roles-m (roles-map roles)]
+    (db/tx-> dresser
+      (refs/get-at grp-ref [:drs_memberships :member->roles])
+      (db/update-result (fn [member->roles]
+                          (->> (for [[member stored-roles] member->roles
+                                     :when (some roles-m (keys stored-roles))]
+                                 member)
+                               (remove nil?)
+                               (vec)))))))
+
 
 (defn leave-all-groups!
   "Removes member from all of its groups."
@@ -101,6 +113,8 @@
 (defn add-with-roles!
   "Same as `db/add!`, but add the newly-added document to the group with
   the provided roles.
+
+  'roles' can be a map of roles or a collection of those keys.
 
   Ex: add an API key, set the API key as a reader of group.
   Returns the new document ID."
