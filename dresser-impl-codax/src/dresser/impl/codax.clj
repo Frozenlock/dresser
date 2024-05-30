@@ -215,11 +215,12 @@ pathwise/side-effect
                              (dt/no-tx-reuse (build test-path))))
              (destroy!)))}
   [path]
-  (vary-meta {:path path}
-             merge
-             {:type ::db/dresser}
-             opt/optional-impl
-             (codax-impl)))
+  (-> (vary-meta {:path path}
+                 merge
+                 {:type ::db/dresser}
+                 opt/optional-impl
+                 (codax-impl))
+      (db/with-temp-dresser-id)))
 
 
 

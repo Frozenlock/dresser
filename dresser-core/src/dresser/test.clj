@@ -672,6 +672,10 @@
                    (add-doc! tx' idx))
                  tx (range 100000)))))))
 
+(defn test--temp-dresser-id
+  [impl-f]
+  (is (db/temp-dresser-id (impl-f)) "Missing temp-dresser-id"))
+
 (defn test-impl
   [impl-f]
   (test--lazyness impl-f)
@@ -696,4 +700,5 @@
   (test--delete impl-f)
   (test--all-drawers impl-f)
   (test--dissoc-at impl-f)
-  (test--has-drawer impl-f))
+  (test--has-drawer impl-f)
+  (test--temp-dresser-id impl-f))

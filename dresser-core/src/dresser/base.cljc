@@ -64,6 +64,15 @@
   [dresser result]
   (update-temp-data dresser assoc :result result))
 
+(defn temp-dresser-id
+  "Temporary (in-memory) dresser ID. Doesn't require a transaction."
+  [dresser]
+  (temp-data dresser [:temp-id]))
+
+(defn with-temp-dresser-id
+  ([dresser] (with-temp-dresser-id dresser (str (gensym "dresser-"))))
+  ([dresser id]
+   (update-temp-data dresser assoc :temp-id id)))
 
 (defn transact!
   {:doc (:doc (meta #'dp/-transact))}

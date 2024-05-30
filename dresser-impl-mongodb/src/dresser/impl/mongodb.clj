@@ -576,14 +576,15 @@
   ([m {:keys [db-name host port] :as db-configs}]
    (let [client (mcl/create (str "mongodb://" host ":" port))
          db (mcl/get-db client db-name)]
-     (vary-meta {:client     client
-                 :db         db
-                 :db-configs db-configs
-                 :*cache (cw/lru-cache-factory {})}
-                merge
-                opt/optional-impl
-                (mongo-impl)
-                {:type ::db/dresser}))))
+     (-> (vary-meta {:client     client
+                     :db         db
+                     :db-configs db-configs
+                     :*cache     (cw/lru-cache-factory {})}
+                    merge
+                    opt/optional-impl
+                    (mongo-impl)
+                    {:type ::db/dresser})
+         (db/with-temp-dresser-id)))))
 
 
 
