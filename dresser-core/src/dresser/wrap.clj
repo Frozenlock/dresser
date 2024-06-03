@@ -1,7 +1,7 @@
 (ns dresser.wrap
   (:require [dresser.base :as db]))
 
-(def ^:dynamic ^:private *stack-level* 0)
+(def ^:dynamic ^:private *stack-level* nil)
 
 (defn- wrap-closing-fn
   "`:closing` is a function receiving the same arguments as the wrapped
@@ -24,18 +24,18 @@
       ;; Fetching/updating inside a nested map is relatively
       ;; expensive, especially considering that `wrap-closing-fn` is
       ;; used on all methods. Using a dynamic variable is MUCH faster.
-      (binding [*stack-level* (inc *stack-level*)]
+      (binding [*stack-level* (update *stack-level* method-sym (fnil inc 0))]
         (let [;; add the closing-fn to the stack
               tx (cond-> tx
                    closing-fn (db/update-temp-data update-in path #((fnil conj []) % closing-fn)))
               ;; apply the method
               tx (apply method tx args)
               ;; retrieve the closing-fns stack
-              cfs (when (= 1 *stack-level*) ; back to the first outer layer
+              cfs (when (= 1 (get *stack-level* method-sym)) ; back to the first outer layer
                     (db/temp-data tx path))]
           (if (not-empty cfs)
-            (-> (reduce (fn [tx' cf] (apply cf tx' args)) tx cfs)
-                (db/update-temp-data update ::closing-fns dissoc method-sym))
+            (let [tx (db/update-temp-data tx update ::closing-fns dissoc method-sym)]
+              (reduce (fn [tx' cf] (apply cf tx' args)) tx cfs))
             tx))))))
 
 (defn build
