@@ -51,7 +51,7 @@
                          (map? map-or-dresser) (hm/build map-or-dresser))]
      (-> {:*source (atom inner-dresser)
           :data    (db/temp-data inner-dresser)
-          :lock    :lock}
+          :lock    (gensym "lock-")}
          (with-meta (merge
                      (meta inner-dresser)
                      atom-impl))))))
