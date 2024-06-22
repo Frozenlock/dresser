@@ -594,7 +594,8 @@
                                                                   (remove #{dresser} ds)))))
                                     @*test-dressers)))))}
   ([db-configs] (build {} db-configs))
-  ([m {:keys [db-name host port] :as db-configs}]
+  ([m {:keys [db-name host port] :as db-configs
+       :or   {port 27017, host "127.0.0.1"}}]
    (let [client (mcl/create (str "mongodb://" host ":" port))
          db (mcl/get-db client db-name)]
      (-> (vary-meta {:client     client
