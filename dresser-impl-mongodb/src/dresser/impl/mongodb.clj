@@ -243,6 +243,11 @@
 ;; it. Note that this relationship will break down once the drawers
 ;; are renamed, as the underlying collection won't be renamed.
 
+(defn- get-all-collections
+  "Retrieves all collections from the MongoDB database."
+  [db]
+  (mcl/list-collection-names db {:keywordize? false}))
+
 (defn- raw-drawer->coll
   [[db session] drawer upsert?]
   (let [encoded-drawer (encode-drawer drawer)
@@ -327,10 +332,26 @@
 
 (dp/defimpl -all-drawers
   [{:keys [db session] :as tx}]
-  (->> (mc/find db drawers-registry {} {:projection {:drawer 1}
-                                        :session    session})
-       (map (comp decode :drawer))
-       (db/with-result tx)))
+  ; MongoDB doesn't support returning the list of collections in a
+  ; multi-docs transactions.  Fetch the list as a separate tx and
+  ; update the results as needed.
+  (let [all-collections (get-all-collections db)
+        coll->drawer-info (->> (for [{:keys [drawer coll expired?]}
+                                     (mc/find db drawers-registry {}
+                                              {:projection {:_id      0,
+                                                            :coll     1,
+                                                            :drawer   1,
+                                                            :expired? 1}
+                                               :session    session})]
+                                 [coll {:drawer   drawer
+                                        :expired? expired?}])
+                               (into {}))
+        drawers-info (vals coll->drawer-info)
+        decoded-drawers (->> (remove :expired? drawers-info)
+                             (map #(decode (:drawer %))))
+        unmatched-coll (remove (set (keys coll->drawer-info)) all-collections)]
+    (->> (concat decoded-drawers unmatched-coll)
+         (db/with-result tx))))
 
 ;;; --------------------------
 
