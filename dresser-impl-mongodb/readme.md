@@ -2,7 +2,7 @@
 
 A better MongoDB.
 
-[![Clojars Project](https://img.shields.io/clojars/v/org.clojars.frozenlock/dresser-impl-mongodb.svg)]
+[![Clojars Project](https://img.shields.io/clojars/v/org.clojars.frozenlock/dresser-impl-mongodb.svg)](https://clojars.org/org.clojars.frozenlock/dresser-impl-mongodb)
 
 ## Advantages
 
