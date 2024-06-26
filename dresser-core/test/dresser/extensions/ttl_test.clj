@@ -111,12 +111,20 @@
   (let [*p (promise)]
     (future
       (while (and (not (realized? *p))
-                  (predicate-fn))
+                  (try (predicate-fn)
+                       (catch Exception e
+                         (deliver *p e))))
         (Thread/sleep 5))
       (deliver *p true))
-    (when (= (deref *p timeout-ms :timeout) :timeout)
-      (deliver *p :timeout)
-      (throw (ex-info "Timeout" {:timeout-ms timeout-ms})))))
+    (let [p (deref *p timeout-ms :timeout)]
+      (cond (= p :timeout)
+            (do (deliver *p :timeout)
+                (throw (ex-info "Timeout" {:timeout-ms timeout-ms})))
+
+            (instance? Exception p)
+            (throw p)
+
+            :else nil))))
 
 (deftest ttl-auto-delete
   (with-start-stop [dresser (-> (hm/build)
