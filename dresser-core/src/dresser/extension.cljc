@@ -21,7 +21,7 @@
     (cond (and already-used? throw-on-reuse?)
           (throw (ex-info "This extension can only be used once" {:extension ext-key}))
 
-          already-used? dresser ;(init-fn' dresser)
+          already-used? (init-fn' dresser)
 
           :else (-> (reduce #(%2 %1) dresser deps) ; apply deps
                     (wrap/build wrap-configs)
@@ -73,4 +73,3 @@
   (defext my-ext3 []
     {:deps         []
      :wrap-configs {}}))
-

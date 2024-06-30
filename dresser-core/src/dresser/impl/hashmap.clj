@@ -242,7 +242,7 @@
   [m]
   (-> (vary-meta {:db (into (sorted-map) m)}
                  merge
-                 {:type ::db/dresser}
+                 {:type ::db/immutable-dresser}
                  opt/optional-impl
                  hashmap-base-impl)
       (db/with-temp-dresser-id)))

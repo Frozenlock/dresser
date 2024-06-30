@@ -11,9 +11,13 @@
   [x]
   ;; Currently (clojure 1.11.1) `satisfies?` doesn't work with methods
   ;; provided via metadata. Fallback on types instead.
-  (= (type x) ::dresser))
+  (isa? (type x) ::dresser))
 
+(derive ::immutable-dresser ::dresser)
 
+(defn immutable?
+  [x]
+  (= (type x) ::immutable-dresser))
 
 (defn temp-data
   {:doc (:doc (meta #'dp/-temp-data))}

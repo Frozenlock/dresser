@@ -54,4 +54,5 @@
           :lock    (gensym "lock-")}
          (with-meta (merge
                      (meta inner-dresser)
+                     {:type ::db/dresser}
                      atom-impl))))))
