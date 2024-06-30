@@ -91,6 +91,11 @@
    (let [{:keys [drawer doc-id path]} (ref lens)]
      (apply db/dissoc-at! lens drawer doc-id (into (or path []) ks) dissoc-ks))))
 
+(defn- lens?
+  "True if dresser supports lenses"
+  [dresser]
+  (and (db/dresser? dresser)
+       (some? (get (meta dresser) `-set-ref))))
 
 (declare lenses)
 
@@ -101,7 +106,9 @@
                [dresser-or-lens ref-lens]]}
   [dresser-or-lens path-or-lens]
   (let [;; Make sure dresser supports ILens
-        lens (lenses dresser-or-lens)
+        lens (if (lens? dresser-or-lens)
+               dresser-or-lens
+               (lenses dresser-or-lens))
         ?ref-from-lens (if (db/dresser? path-or-lens)
                          (ref path-or-lens))
         ?path (when-not ?ref-from-lens path-or-lens)
@@ -125,10 +132,6 @@
       :else (throw (ex-info "Unexpected focus arguments"
                             {:dresser-or-lens dresser-or-lens
                              :path-or-lens    path-or-lens})))))
-
-(defn lens?
-  [dresser]
-  (db/dresser? dresser))
 
 
 (ext/defext lenses

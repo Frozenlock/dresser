@@ -39,10 +39,6 @@
           (dt/testing-> "- Only"
             (dt/is-> (lens/get-at [:a] {:b1 :?}) (= {:b1 1})))))))
 
-  (testing "lens?"
-    (is (not (lens/lens? {})))
-    (is (lens/lens? (lens/lenses (test-dresser)))))
-
   (testing "update-at!"
     (db/tx-> (lens/lenses (test-dresser))
       (lens/set-ref! {:drawer :docs, :doc-id 1, :path [:a :b]})
