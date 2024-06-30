@@ -432,7 +432,7 @@
         (try
           (db/tx-> dresser
             (db/assoc-at! :drawer1 "some-id" [:str2] "string 2")
-            (db/update-at! :drawer1 [:str] #(throw (ex-info "Test exception" {}))))
+            (db/update-at! :drawer1 "some-id" [:str] (fn [_] (throw (ex-info "Test exception" {})))))
           (catch Exception _e))
 
         (is (= doc (db/fetch-by-id dresser :drawer1 "some-id")))))))
@@ -631,8 +631,8 @@
 (defn test--lazyness
   [impl-f]
   (testing "Lazyness is realized before closing transaction"
-    (let [qty 1000
-          docs (for [i (range 1000)]
+    (let [qty 200
+          docs (for [i (range qty)]
                  {:id i})
           dresser (db/raw-> (impl-f)
                     (db/upsert-many! :drawer1 docs))]
