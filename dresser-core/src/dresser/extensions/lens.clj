@@ -27,7 +27,6 @@
   (:require [dresser.base :as db]
             [dresser.extension :as ext]
             [dresser.protocols :as dp]
-            [dresser.extensions.lens :as lens]
             [dresser.impl.hashmap :as hm]))
 
 (defprotocol ILens
@@ -115,7 +114,7 @@
         ?ref (ref lens)]
     (cond
       ?ref-from-lens
-      (lens/set-ref! lens ?ref-from-lens)
+      (set-ref! lens ?ref-from-lens)
 
       (and ?ref ?path)
       (->> (update ?ref :path (fn [p]

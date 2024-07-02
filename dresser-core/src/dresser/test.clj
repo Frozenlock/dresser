@@ -2,8 +2,7 @@
   (:require [clojure.set :as set]
             [clojure.test :as t :refer [is testing]]
             [dresser.base :as db]
-            [dresser.protocols :as dp]
-            [dresser.test :as dt])
+            [dresser.protocols :as dp])
   (:import (java.util Date)))
 
 ;; Redefine via leiningen injection to activate the fixture.
