@@ -1,10 +1,12 @@
 (ns dresser.extensions.ttl
+  (:refer-clojure :exclude [> >= < <=])
   (:require [dresser.base :as db]
             [dresser.extension :as ext]
             [dresser.extensions.durable-refs :as refs]
             [dresser.protocols :as dp])
-  (:refer-clojure :exclude [> >= < <=])
-  (:import [java.util Date]))
+  (:import (java.lang.ref WeakReference)
+           (java.util Date WeakHashMap)
+           (java.util.concurrent Executors TimeUnit)))
 
 ;; Rather than storing the expiration as a field in the target
 ;; document, we store the document reference and the expiration in a
@@ -166,22 +168,44 @@ doesn't have any."
        _ (db/upsert! tx ttl-drawer {:id new-ttl-id :target doc-ref})]
     doc-ref))
 
+
+(defn- create-scheduled-task
+  [dresser delay-ms]
+  (let [executor (Executors/newSingleThreadScheduledExecutor)
+        weak-dresser (WeakReference. dresser)
+        task (fn []
+               (if-let [current-dresser (.get weak-dresser)]
+                 (try
+                   (delete-expired! current-dresser)
+                   (catch Exception e
+                     (println "Error in TTL cleanup task:" (.getMessage e))))
+                 ;; If the dresser has been garbage collected, shut down the executor
+                 (.shutdown executor)))
+        future (.scheduleWithFixedDelay executor task 0 delay-ms TimeUnit/MILLISECONDS)]
+    {:executor executor
+     :future future}))
+
+(defn- stop-scheduled-task
+  [{:keys [executor future]}]
+  (when future
+    (.cancel future false))
+  (when executor
+    (.shutdown executor)))
+
 (ext/defext ttl
   [delay-between-delete-ms]
   {:deps         [refs/durable-refs]
    :init-fn      #(db/with-system-drawers % [ttl-drawer])
-   :wrap-configs (let [*dresser (atom nil)]
+   :wrap-configs (let [tasks (WeakHashMap.)]
                    {`dp/-start {:wrap (fn [start-method]
                                         (fn [dresser]
-                                          (let [started-drs (start-method dresser)]
-                                            ;; TODO: replace by a proper scheduler?
-                                            (reset! *dresser started-drs)
-                                            (future (while @*dresser
-                                                      (try (delete-expired! @*dresser)
-                                                           (catch Exception _e))
-                                                      (Thread/sleep delay-between-delete-ms)))
+                                          (let [started-drs (start-method dresser)
+                                                task (create-scheduled-task started-drs delay-between-delete-ms)]
+                                            (.put tasks started-drs task)
                                             started-drs)))}
                     `dp/-stop  {:wrap (fn [stop-method]
                                         (fn [dresser]
-                                          (reset! *dresser nil)
+                                          (when-let [task (.get tasks dresser)]
+                                            (stop-scheduled-task task)
+                                            (.remove tasks dresser))
                                           (stop-method dresser)))}})})
