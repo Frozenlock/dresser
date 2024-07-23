@@ -3,7 +3,7 @@
             [clojure.test :as t :refer [is testing]]
             [dresser.base :as db]
             [dresser.protocols :as dp])
-  (:import (java.util Date)))
+  (:import (java.util Arrays Date)))
 
 ;; Redefine via leiningen injection to activate the fixture.
 (def test-coverage? false)
@@ -248,6 +248,16 @@
               (db/add! :drawer m2)
               (is-> (db/fetch :drawer {:only {{:a 1} :?}})
                     (u= [m1 m2])))))))
+
+    (testing "bytes"
+      (let [bytes (.getBytes "test string")
+            impl (impl-f)
+            b= (fn [result]
+                 (Arrays/equals (:bytes (first result)) bytes))]
+        (db/tx-> impl
+          (db/add! :drawer {:bytes bytes})
+          (is-> (db/fetch :drawer {:only {:bytes :?}})
+                (b=)))))
 
     (testing "Sets as keys"
       (binding [*print-meta* true]

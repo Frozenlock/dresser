@@ -11,7 +11,8 @@
             [dresser.test :as dt]
             [hasch.core :as hashc]
             [mongo-driver-3.client :as mcl]
-            [mongo-driver-3.collection :as mc]))
+            [mongo-driver-3.collection :as mc])
+  (:import (org.bson.types Binary)))
 
 ;; Support for '.' and '$' in collection and key names.  While docs
 ;; with '.' in keys can be fetched, it breaks things for `get-at` if
@@ -191,6 +192,7 @@
                     "edn" (edn/read-string (unescape data))
                     "kw" (keyword (unescape data)))
                   (unescape x))
+    (instance? org.bson.types.Binary x) (.getData x)
     :else x))
 
 
