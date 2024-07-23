@@ -128,6 +128,16 @@
 
 ;; Extension
 
+(defn- wipe!
+  [tx drawer where]
+  (let [f (refs/expand-fn remove-all-member-and-group-references!)]
+    (db/fetch-reduce
+     tx drawer
+     #(f %1 drawer (:id %2))
+     {:where (assoc-in where
+                       [:drs_memberships db/exists?] true)
+      :only  {:id :?}})))
+
 
 (ext/defext keep-sync
   "Automatically maintains membership relations when deleting a document or
@@ -139,16 +149,11 @@
    ;; TODO: only remove if the drawer IDs no longer exist
 
 
-   (let [wipe! (refs/expand-fn remove-all-member-and-group-references!)]
-     {`dp/-delete {:wrap (fn [delete-method]
-                           (fn [tx drawer id]
-                             (-> (wipe! tx drawer id)
-                                 (delete-method drawer id))))}
-      `dp/-drop   {:wrap (fn [drop-method]
-                           (fn [tx drawer]
-                             ;; Might not need to be immediate.
-                             ;; Consider converting to a job in future optimization.
-                             (-> (let [[tx ids] (db/dr (db/all-ids tx drawer))]
-                                   (reduce (fn [tx' id] (wipe! tx' drawer id))
-                                           tx ids))
-                                 (drop-method drawer))))}})})
+   {`dp/-delete-many {:wrap (fn [delete-method]
+                              (fn [tx drawer where]
+                                (-> (wipe! tx drawer where)
+                                    (delete-method drawer where))))}
+    `dp/-drop   {:wrap (fn [drop-method]
+                         (fn [tx drawer]
+                           (-> (wipe! tx drawer {})
+                               (drop-method drawer))))}}})

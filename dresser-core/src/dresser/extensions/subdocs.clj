@@ -57,34 +57,35 @@
       (remove-child! tx parent-ref child-ref)
       (db/with-result tx nil))))
 
-(defn- delete-children!
-  "Recursively delete children"
-  [dresser parent-ref]
-  (db/tx-let [tx dresser]
-      [children-refs (children tx parent-ref)
-       ;; Delete children of children recursively
-       _ (reduce #(delete-children! %1 %2) tx children-refs)]
-    (reduce #(refs/delete! %1 %2) tx children-refs)))
+
+(defn- clean!
+  [dresser drawer where]
+  (db/fetch-reduce
+   dresser drawer
+   (fn [tx doc]
+     (db/tx-let [tx tx]
+         [id (:id doc)
+          this-ref (refs/ref tx drawer id)
+          {:keys [children parent]} (get doc field)
+          _ (if (seq children) (reduce #(refs/delete! %1 %2) tx children))]
+       (when (some? parent)
+         (remove-parent! tx this-ref))))
+   {:where (merge where {field {db/exists? true}})
+    :only  {:id   :?
+            field :?}}))
 
 (ext/defext keep-sync
   "Children documents are automatically deleted"
   []
   {:deps [refs/durable-refs]
    :wrap-configs
-   (let [clean! (fn [tx drawer id]
-                  (db/tx-let [tx tx]
-                             [doc-ref (refs/ref tx drawer id)
-                              _ (when doc-ref (delete-children! tx doc-ref))
-                              _ (when doc-ref (remove-parent! tx doc-ref))]
-                             tx))]
-     {`dp/-delete {:wrap (fn [method]
-                           (fn [tx drawer id]
-                             (-> tx
-                                 (clean! drawer id)
-                                 (method drawer id))))}
-      `dp/-drop   {:wrap (fn [method]
-                           (fn [tx drawer]
-                             (-> (let [[tx ids] (db/dr (db/all-ids tx drawer))]
-                                   (reduce (fn [tx' id] (clean! tx' drawer id))
-                                           tx ids))
-                                 (method drawer))))}})})
+   {`dp/-delete-many {:wrap (fn [method]
+                              (fn [tx drawer where]
+                                (-> tx
+                                    (clean! drawer where)
+                                    (method drawer where))))}
+    `dp/-drop        {:wrap (fn [method]
+                              (fn [tx drawer]
+                                (-> tx
+                                    (clean! drawer {}) ;; Match all documents
+                                    (method drawer))))}}})

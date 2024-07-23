@@ -69,9 +69,12 @@
             (dt/is-> (subdocs/children d5) nil?))))
     (testing "extension drop"
       (db/tx-let [tx (subdocs/keep-sync (test-dresser))]
-          [[o1 o2] (add-docs tx :orgs 2)
-           [p1 p2 p3] (add-docs tx :projects 3)]
+          [[o1 o2 & orgs] (add-docs tx :orgs 52)
+           [p1 p2 p3] (add-docs tx :projects 3)
+           members (add-docs tx :members 50)
+           _ (reduce #(subdocs/add-child! %1 (first %2) (last %2)) tx (apply map vector [orgs members]))]
         (-> tx
+            (dt/is-> (db/fetch-count :members) (= 50))
             (subdocs/add-child! o1 p1)
             (subdocs/add-child! o2 p2)
             (db/drop! :orgs)
@@ -79,4 +82,5 @@
             (dt/is-> (refs/fetch-by-ref o2) nil?)
             (dt/is-> (refs/fetch-by-ref p1) nil?)
             (dt/is-> (refs/fetch-by-ref p2) nil?)
-            (dt/is-> (refs/fetch-by-ref p3) some?))))))
+            (dt/is-> (refs/fetch-by-ref p3) some?)
+            (dt/is-> (db/fetch-count :members) (= 0)))))))

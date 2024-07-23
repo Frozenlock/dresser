@@ -29,7 +29,9 @@
     (is (= {:a "a", :c {:d "cd", :i :default}, :n :default}
            (take-from source query :default)))
     (is (= {:a "a", :c {:d "cd"}}
-           (take-from source query)))))
+           (take-from source query)))
+    (is (= source
+           (take-from source nil)))))
 
 
 (defn- path-comparator [path order]
@@ -144,6 +146,44 @@
       data)))
 
 
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; (comment
+
+;;   (defn take-from
+;;     "Returns the query map with all its node values filled with values
+;;   taken from source under the same path. Supports wildcards (::db/*)."
+;;     ([source query]
+;;      (take-from source query ::drop-not-found))
+;;     ([source query not-found]
+;;      (if
+;;          (and (map? source) (map? query))
+;;        (->> (for [[dk dv] query
+;;                   :let [sv (if (= dk ::db/*)
+;;                              source
+;;                              (get source dk not-found))]
+;;                   :when (not= sv ::drop-not-found)]
+;;               (if (= dk ::db/*)
+;;                 (into {} (for [[k v] source]
+;;                            [k (take-from v dv not-found)]))
+;;                 [dk (take-from sv dv not-found)]))
+;;             (into {}))
+;;        source)))
+
+
+;;   {:members
+;;    {::db/*
+;;     {::db/when {:type  :admin
+;;                 :posts {::db/* {:likes {::db/gte 10}}}}
+;;      :email    true}}}
+;;   ;; Example supporting ::db/* (wildcard)
+
+;;   )
+
+
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
 (defn take-or-all
   "Exactly like `clojure.core/take`, but returns coll if n is nil."
   [n coll]
@@ -191,14 +231,23 @@
   [dresser]
   (get dresser :data))
 
-(dp/defimpl -delete
-  [tx drawer id]
-  (let [drawer-doc (get-in tx [:db drawer])
-        drawer-doc' (dissoc drawer-doc id)]
-    (-> (if (empty? drawer-doc')
-          (update tx :db dissoc drawer)
-          (update tx :db assoc drawer drawer-doc'))
-        (db/with-result id))))
+;; (dp/defimpl -delete
+;;   [tx drawer id]
+;;   (let [drawer-doc (get-in tx [:db drawer])
+;;         drawer-doc' (dissoc drawer-doc id)]
+;;     (-> (if (empty? drawer-doc')
+;;           (update tx :db dissoc drawer)
+;;           (update tx :db assoc drawer drawer-doc'))
+;;         (db/with-result id))))
+
+(dp/defimpl -delete-many
+  [tx drawer where]
+  (db/tx-let [tx tx]
+      [ids (-> (db/fetch tx drawer {:where where
+                                    :only  {:id :?}})
+               (db/update-result #(mapv :id %)))]
+    (-> (update-in tx [:db drawer] #(apply dissoc % ids))
+        (db/with-result {:deleted-count (count ids)}))))
 
 (dp/defimpl -all-drawers
   [tx]
@@ -207,7 +256,8 @@
 (def hashmap-base-impl
   (dp/mapify-impls
    [-all-drawers
-    -delete
+    -delete-many
+    ;-delete
     -fetch
     -temp-data
     -transact

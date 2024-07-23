@@ -315,6 +315,8 @@
         (db/upsert-many! :drawer1 (sort-by :r docs))
         ;tx
         (testing-> "- Where"
+          (is-> (db/fetch :drawer1 {:where {:id nil}}) empty?
+                "`nil` is not a wildcard")
           (is-> (db/fetch :drawer1 {:where {:1 1}}) (u= [d1 d2 d3]))
           (is-> (db/fetch :drawer1 {:where {:2 2}}) (u= [d2 d3]))
           (is-> (db/fetch :drawer1 {:where {:c {:d :nested}}}) (u= [d3]))
@@ -582,6 +584,25 @@
         (is-> (db/fetch-by-id :drawer1 3) some?)
         (is-> (db/upsert! :drawer1 doc1) some?)))))
 
+(defn test--delete-many
+  [impl-f]
+  (testing "Delete-many"
+    (let [[doc1 :as docs] [{:id 1, :a 1}
+                           {:id 2, :a 1}
+                           {:id 3, :a 2}]]
+      (db/tx-> (impl-f)
+        (db/upsert-many! :drawer1 docs)
+        (is-> (db/delete-many! :drawer1 {:id nil}) (= {:deleted-count 0}))
+        (is-> (db/delete-many! :drawer1 {:id :doesnt-exist}) (= {:deleted-count 0})
+              "Doesn't throw when nothing matches")
+        (is-> (db/delete-many! :drawer1 {:a 1}) (= {:deleted-count 2}))
+        (is-> (db/fetch-by-id :drawer1 1) nil?)
+        (is-> (db/fetch-by-id :drawer1 2) nil?)
+        (is-> (db/fetch-by-id :drawer1 3) some?)
+        (is-> (db/delete-many! :drawer1 {:id 3}) (= {:deleted-count 1}))
+        (is-> (db/fetch-by-id :drawer1 3) nil?)
+        (is-> (db/upsert! :drawer1 doc1) some?)))))
+
 (defn test--all-drawers
   [impl-f]
   (testing "All-drawers"
@@ -699,14 +720,13 @@
   (test--upsert-many impl-f)
   (test--fetch impl-f)
   (test--add-&-fetch-by-id impl-f)
-  (test--replace impl-f)
   (test--assoc-at impl-f)
   (test--get-at impl-f)
   (test--update-at impl-f)
-  (test--replace impl-f)
   (test--drop impl-f)
   (test--all-ids impl-f)
   (test--delete impl-f)
+  (test--delete-many impl-f)
   (test--all-drawers impl-f)
   (test--dissoc-at impl-f)
   (test--has-drawer impl-f)

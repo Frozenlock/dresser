@@ -127,7 +127,7 @@
 
 (defn- members-with-permission
   "Returns a collection of member refs, or, if the permission is matched
-  with a `guest-role` stored in the grp document, returns [::any]. "
+  with a `guest-role` stored in the grp document, returns [::guest]. "
   [dresser grp-ref request-map]
   (db/tx-let [tx dresser]
       [{:keys [drs_rbac]} (refs/fetch-by-ref tx grp-ref
@@ -194,6 +194,8 @@
               `dp/-all-drawers never-f
               `dp/-delete      (fn [drawer id]
                                  {:delete {drawer {id :?}}})
+              `dp/-delete-many (fn [drawer _where]
+                                 {:delete (assoc-in {} [drawer *doc-id*] :?)})
               `dp/-upsert      (fn [drawer]
                                  {:write {drawer :?}})
 
@@ -342,6 +344,40 @@
     (db/with-result tx2 docs)))
 
 
+(defn check-and-delete
+  [member-ref method-sym provided-permissions method tx args]
+  (let [[drawer where] args
+        request-fn (method->request-fn method-sym)
+        ;; Do we have permission for the entire drawer?
+        early-permit? (permitted? provided-permissions {:delete {drawer :?}})
+        tx (if early-permit?
+             tx
+             (db/fetch-reduce
+              tx drawer
+              (fn [tx doc]
+                (let [id (:id doc)
+                      request (binding [*doc-id* id]
+                                (request-fn drawer where))
+                      doc-r (doc-request drawer id request)
+                      [tx grp-ref] (db/dr (refs/ref! tx drawer id))
+                      [tx pchain] (if (and (some? grp-ref)
+                                           (= member-ref grp-ref))
+                                    [tx [:itself]] ; member can access itself
+                                    (db/dr (permission-chain tx grp-ref doc-r
+                                                             member-ref)))]
+                  (if (empty? pchain)
+                    (throw (ex-info "Missing permission"
+                                    {:by      member-ref
+                                     :method  (name method-sym)
+                                     :request request
+                                     :target  grp-ref
+                                     :type    ::permission}))
+                    tx)))
+              {:where      where
+               :chunk-size 100
+               :only       {:id :?}}))]
+    (method tx drawer where)))
+
 (defn- default-check
   [member-ref method-sym method tx args request]
   (let [[drawer id & _] args
@@ -401,6 +437,14 @@
 
                   tx (cond
                        fetched-tx tx
+
+                       (= method-sym `dp/-delete-many)
+                       (check-and-delete member-ref
+                                         method-sym
+                                         provided-permissions
+                                         method
+                                         tx
+                                         args)
 
                        (nil? ?request) tx
 

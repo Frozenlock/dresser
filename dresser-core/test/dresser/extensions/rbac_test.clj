@@ -239,11 +239,13 @@
 (deftest wrapped-rbac
   (let [dresser (test-dresser)
         [dresser [usr1 usr2]] (db/dr (db/raw-> dresser (add-groups! 2 :users)))
-        [dresser [grp1 grp2]] (db/dr (db/raw-> dresser (add-groups! 2 :grps)))
+        [dresser [grp1 grp2 grp3]] (db/dr (db/raw-> dresser (add-groups! 3 :grps)))
         dresser (db/raw-> dresser
-                  (rbac/set-roles-permissions! grp1 {:owner {:read  true
-                                                             :write true}})
-                  (mbr/upsert-group-member! grp1 usr1 [:owner]))]
+                  (rbac/set-roles-permissions! grp1 {:owner {:read   true
+                                                             :write  true}})
+                  (mbr/upsert-group-member! grp1 usr1 [:owner])
+                  (rbac/set-roles-permissions! grp3 {:owner {:delete true}})
+                  (mbr/upsert-group-member! grp3 usr1 [:owner]))]
     (db/tx-> (rbac/enforce-rbac dresser usr1 {:add :*})
 
       ; wrap the dresser for "usr1"
@@ -256,8 +258,12 @@
                  (= "value"))
         (dt/is-> (refs/get-at grp1 [:my-test])
                  (= "value"))
+        (dt/is-> (refs/delete! grp3)
+                 (= (refs/doc-id grp3)))
         ;; ... And are forbidden when the user doesn't have the necessary rights.
         (dt/is-> (refs/assoc-at! grp2 [:my-test] "value")
+                 (thrown-with-msg? clojure.lang.ExceptionInfo #"Missing permission"))
+        (dt/is-> (refs/delete! grp2)
                  (thrown-with-msg? clojure.lang.ExceptionInfo #"Missing permission"))
 
         (dt/testing-> "Add"
@@ -277,7 +283,6 @@
                                       "Can add with sufficient permission and allowed drawer")
                   new-doc-ref (refs/ref tx :drawer new-doc-id)
                   admin-refs (mbr/members-of-group-with-roles tx new-doc-ref [mbr/role-admin])]
-               (def aaa tx)
                (is (= admin-refs [grp1])))))))
 
       (dt/testing-> "Higher order operations"
