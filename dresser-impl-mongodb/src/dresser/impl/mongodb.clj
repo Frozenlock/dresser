@@ -372,7 +372,11 @@
               (flatten-keys)
               (replace-query-ops))]
     (into {} (for [[k v] m]
-               [(mongo-dotted-path k) v]))))
+               [(mongo-dotted-path k)
+                (if (nil? v)
+                  {:$exists true,
+                   :$eq nil}
+                  v)]))))
 
 (defn- prepare-where*
   [where]
@@ -483,6 +487,14 @@
                  {:session session})
   (db/with-result tx id))
 
+(dp/defimpl -delete-many
+  [{:keys [db session *cache] :as tx} drawer where]
+  (let [ret (mc/delete-many db
+                            (drawer->coll [db session *cache] drawer)
+                            (prepare-where where)
+                            {:session session})]
+    (db/with-result tx {:deleted-count (.getDeletedCount ret)})))
+
 (defn upsert
   [{:keys [db session *cache] :as dresser} drawer data]
   (let [encoded (-> (id->mid data)
@@ -564,6 +576,7 @@
   (dp/mapify-impls
    [-all-drawers
     -delete
+    -delete-many
     -fetch
     -drop
     -fetch-count
