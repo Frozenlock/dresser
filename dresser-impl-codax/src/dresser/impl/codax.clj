@@ -74,6 +74,16 @@ pathwise/side-effect
     (-> (assoc tx :codax codax)
         (db/with-result id))))
 
+(dp/defimpl -delete-many
+  [tx drawer where]
+  (let [tx (db/with-result tx {:deleted-count 0})]
+    (db/fetch-reduce tx drawer
+                     (fn [tx doc]
+                       (-> (update tx :codax c/dissoc-at [drawer (:id doc)])
+                                     (db/update-result update :deleted-count inc)))
+                     {:where where
+                      :only  {:id :?}})))
+
 (dp/defimpl -drop
   [tx drawer]
   (let [codax (:codax tx)
@@ -89,28 +99,31 @@ pathwise/side-effect
         start-key (or start-key
                       (when-not end-key
                         (ffirst (c/seek-at codax path :limit 1 :reverse reverse?))))
-        data (if end-key
-               (if (and end-key (not start-key))
-                 (if reverse?
-                   (c/seek-from codax path end-key
+        data (if (and start-key end-key
+                      (= start-key end-key))
+               [[start-key (c/get-at codax (conj path start-key))]]
+               (if end-key
+                 (if (and end-key (not start-key))
+                   (if reverse?
+                     (c/seek-from codax path end-key
+                                  :limit chunk-size
+                                  :reverse reverse?)
+                     (c/seek-to codax path end-key
                                 :limit chunk-size
-                                :reverse reverse?)
-                   (c/seek-to codax path end-key
+                                :reverse false))
+                   (if (neg? (compare start-key end-key))
+                     (c/seek-range codax path start-key end-key
+                                   :limit chunk-size
+                                   :reverse reverse?)
+                     (c/seek-range codax path end-key start-key
+                                   :limit chunk-size
+                                   :reverse reverse?)))
+                 (if reverse?
+                   (c/seek-to codax path start-key
                               :limit chunk-size
-                              :reverse false))
-                 (if (neg? (compare start-key end-key))
-                   (c/seek-range codax path start-key end-key
-                                 :limit chunk-size
-                                 :reverse reverse?)
-                   (c/seek-range codax path end-key start-key
-                                 :limit chunk-size
-                                 :reverse reverse?)))
-               (if reverse?
-                 (c/seek-to codax path start-key
-                            :limit chunk-size
-                            :reverse true)
-                 (c/seek-from codax path start-key
-                              :limit chunk-size)))
+                              :reverse true)
+                   (c/seek-from codax path start-key
+                                :limit chunk-size))))
         data (if remove-first? (rest data) data)
         last-key (first (last data))]
     (if last-key
@@ -126,36 +139,43 @@ pathwise/side-effect
 
 (dp/defimpl -fetch
   [tx drawer only limit where sort-config skip]
-  (let [codax (:codax tx)
-        ;; Documents are already sorted by ID.
-        ;; Leverage this ordering with seek-at/seek-from when possible.
-        sort-only-id? (and (= :id (first (ffirst sort-config)))
-                           (= 1 (count sort-config)))
-        sort-id-reverse? (and sort-only-id? (= :desc (second (first sort-config))))
-        ;; Identify if there's an :id query and isolate it
-        id-queries (:id where)
-        ;; Remove the id query from the where clause
-        other-where (dissoc where :id)
-        ;; Depending on the operators, choose an appropriate start and end key
-        start-key (or (::db/gte id-queries)
-                      (::db/gt id-queries))
-        end-key (or (::db/lte id-queries)
-                    (::db/lt id-queries))
-        [start-key end-key] (if sort-id-reverse?
-                              [end-key start-key]
-                              [start-key end-key])
-        id-ops (set (keys id-queries))
-        all-docs (let [results (map second (lazy-fetch codax [drawer] start-key end-key 1 false sort-id-reverse?))]
-                   (if sort-id-reverse?
-                     (cond->> results
-                       (id-ops ::db/lt) rest
-                       (id-ops ::db/gt) drop-last)
-                     (cond->> results
-                       (id-ops ::db/lt) drop-last
-                       (id-ops ::db/gt) rest)))]
-    (->> (hm/fetch-from-docs all-docs only limit other-where (if sort-only-id? nil sort-config) skip)
-         (doall)
-         (db/with-result tx))))
+  (if (nil? (get where :id :not-found))
+    (db/with-result tx '())
+    (let [codax (:codax tx)
+          ;; Documents are already sorted by ID.
+          ;; Leverage this ordering with seek-at/seek-from when possible.
+          sort-only-id? (and (= :id (first (ffirst sort-config)))
+                             (= 1 (count sort-config)))
+          sort-id-reverse? (and sort-only-id? (= :desc (second (first sort-config))))
+          ;; Identify if there's an :id query and isolate it
+          id-queries (when-let [id-q (:id where)]
+                       (when (and (map? id-q)
+                                  (some db/ops? (keys id-q)))
+                         id-q))
+          ;; Remove the id query from the where clause
+          other-where (dissoc where :id)
+          [start-key end-key] (if id-queries
+                                (let [start-key (or (::db/gte id-queries)
+                                                    (::db/gt id-queries))
+                                      end-key (or (::db/lte id-queries)
+                                                  (::db/lt id-queries))]
+                                  (if sort-id-reverse?
+                                    [end-key start-key]
+                                    [start-key end-key]))
+                                [(:id where) (:id where)])
+          ;; Depending on the operators, choose an appropriate start and end key
+          id-ops (set (keys id-queries))
+          all-docs (let [results (map second (lazy-fetch codax [drawer] start-key end-key 1 false sort-id-reverse?))]
+                     (if sort-id-reverse?
+                       (cond->> results
+                         (id-ops ::db/lt) rest
+                         (id-ops ::db/gt) drop-last)
+                       (cond->> results
+                         (id-ops ::db/lt) drop-last
+                         (id-ops ::db/gt) rest)))]
+      (->> (hm/fetch-from-docs all-docs only limit other-where (if sort-only-id? nil sort-config) skip)
+           (doall)
+           (db/with-result tx)))))
 
 
 
@@ -198,6 +218,7 @@ pathwise/side-effect
   (dp/mapify-impls
    [-all-drawers
     -delete
+    -delete-many
     -drop
     -fetch
     -fetch-by-id
