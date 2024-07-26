@@ -67,13 +67,6 @@ pathwise/side-effect
   (->> (map first (c/seek-at (:codax tx) [codax-drawers]))
        (db/with-result tx)))
 
-(dp/defimpl -delete
-  [tx drawer id]
-  (let [codax (:codax tx)
-        codax (c/dissoc-at codax [drawer id])]
-    (-> (assoc tx :codax codax)
-        (db/with-result id))))
-
 (dp/defimpl -delete-many
   [tx drawer where]
   (let [tx (db/with-result tx {:deleted-count 0})]
@@ -217,7 +210,6 @@ pathwise/side-effect
   []
   (dp/mapify-impls
    [-all-drawers
-    -delete
     -delete-many
     -drop
     -fetch

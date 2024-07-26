@@ -231,15 +231,6 @@
   [dresser]
   (get dresser :data))
 
-;; (dp/defimpl -delete
-;;   [tx drawer id]
-;;   (let [drawer-doc (get-in tx [:db drawer])
-;;         drawer-doc' (dissoc drawer-doc id)]
-;;     (-> (if (empty? drawer-doc')
-;;           (update tx :db dissoc drawer)
-;;           (update tx :db assoc drawer drawer-doc'))
-;;         (db/with-result id))))
-
 (dp/defimpl -delete-many
   [tx drawer where]
   (db/tx-let [tx tx]

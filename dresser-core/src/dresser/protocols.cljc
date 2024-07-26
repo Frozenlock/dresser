@@ -26,7 +26,6 @@
   (-fetch ^:tx [dresser drawer only limit where sort skip]
           "Fetches documents from drawer.")
   (-all-drawers ^:tx [dresser] "Returns a sequence of all drawers keys")
-  (-delete ^:tx ^:w [dresser drawer id] "Deletes the document if it exists. Returns id.")
   (-delete-many ^:tx ^:w [dresser drawer where]
                 "Delete all documents matching `where`. Returns {:deleted-count <qty>}")
   (-upsert ^:tx ^:w [dresser drawer data] "Upserts a document containing `:id` and returns it.")

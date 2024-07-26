@@ -479,14 +479,6 @@
   [dresser]
   (get dresser :data))
 
-(dp/defimpl -delete
-  [{:keys [db session *cache] :as tx} drawer id]
-  (mc/delete-one db
-                 (drawer->coll [db session *cache] drawer)
-                 (id->mid {:id id})
-                 {:session session})
-  (db/with-result tx id))
-
 (dp/defimpl -delete-many
   [{:keys [db session *cache] :as tx} drawer where]
   (let [ret (mc/delete-many db
@@ -575,7 +567,6 @@
   []
   (dp/mapify-impls
    [-all-drawers
-    -delete
     -delete-many
     -fetch
     -drop
