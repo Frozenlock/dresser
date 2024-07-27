@@ -143,19 +143,16 @@ doesn't have any."
       [?existing-ttl-id (refs/get-at tx doc-ref [ttl-field])]
     (some-> ?existing-ttl-id ttl-id->inst)))
 
-;; TODO: convert into multiple transactions.
-;; Perhaps a batched lazy-fetch, fetching 500 items at a time?
 (defn delete-expired!
   [dresser]
-  (db/tx-let [tx dresser]
-      [ttl-docs (db/fetch tx ttl-drawer {:where {:id {db/lt (str (ms (now)))}}
-                                         :only  [:target :id]})]
-    ;; This reduce is kind of a pain.
-    ;; Perhaps a macro to make this easier?
-    (reduce (fn [tx' {:keys [target id]}]
-              (-> (refs/delete! tx' target)
-                  (db/delete! ttl-drawer id)))
-            tx ttl-docs)))
+  ;; Delete targets
+  (db/tx-> dresser
+    (db/fetch-reduce ttl-drawer
+                     (fn [tx {:keys [target id]}]
+                       (-> (refs/delete! tx target)
+                           (db/delete! ttl-drawer id)))
+                     {:where {:id {db/lt (str (ms (now)))}}
+                      :only  [:target :id]})))
 
 (defn add-with-ttl!
   "Adds a document with a time to live and returns its ref.
