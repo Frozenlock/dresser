@@ -460,28 +460,19 @@
    (let [?fetch-id (get-in query [:where :id])
          query (dissoc query :chunk-size)]
      (with-tx [tx dresser]
-       (if ?fetch-id
-         ;; Single document
-         (let [r (result tx)
-               [tx' docs] (dr (fetch tx drawer query))
-               doc (first docs)
-               tx' (with-result tx' r)]
-           (if doc
-             (f tx' doc)
-             tx'))
-         (loop [tx tx
-                ?last-id nil]
-           (let [query (if ?last-id
-                         (assoc-in query [:where :id] {::gt ?last-id})
-                         query)
-                 r (result tx)
-                 [tx' docs] (dr (fetch tx drawer (cond-> query
-                                                   (not ?fetch-id) (merge {:sort  [[[:id] :asc]]
-                                                                           :limit chunk-size}))))
-                 tx' (with-result tx' r)]
-             (if (not-empty docs)
-               (recur (reduce f tx' docs) (:id (last docs)))
-               tx'))))))))
+       (loop [tx tx
+              ?last-id nil]
+         (let [query (if ?last-id
+                       (assoc-in query [:where :id] {::gt ?last-id})
+                       query)
+               r (result tx)
+               [tx' docs] (dr (fetch tx drawer (merge query {:sort  [[[:id] :asc]]
+                                                             :limit chunk-size})))
+               tx' (with-result tx' r)
+               tx' (reduce f tx' docs)]
+           (if (< (count docs) chunk-size)
+             tx'
+             (recur tx' (:id (last docs))))))))))
 
 
 
