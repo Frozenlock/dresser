@@ -161,19 +161,22 @@
               :else x))]
     (w/postwalk f coll)))
 
+(defn- encode-to-str
+  [x]
+  (cond
+    (string? x) (escape x)
+    (keyword? x) (if (query-ops x)
+                   x
+                   (encode x))
+    :else (str "drs:mdb:edn("
+               (escape (pr-str (ordered-commutative-coll x))) ")")))
 (defn- encode
   [x]
   (cond
     (map? x) (into {} (for [[k v] x]
                         ;; Mongo doesn't support much besides strings
                         ;; as keys. Serialize if necessary.
-                        [(cond
-                           (string? k) (escape k)
-                           (keyword? k) (if (query-ops k)
-                                          k
-                                          (encode k))
-                           :else (str "drs:mdb:edn("
-                                      (escape (pr-str (ordered-commutative-coll k))) ")"))
+                        [(encode-to-str k)
                          (encode v)]))
     (and (coll? x)
          (not (db/ops? x))) (encode-coll x)
@@ -212,6 +215,19 @@
   (if-let [id (get m "_id")]
     (-> (dissoc m :_id "_id")
         (assoc :id (decode id)))
+    m))
+
+(defn- encode-id
+  "IDs MUST be encoded to a string"
+  [m]
+  (if-let [id (:id m)]
+    (letfn [(f [m] (if (and (map? m) (some db/ops? (keys m)))
+                     (reduce-kv (fn [m k v]
+                                  (assoc m k (f v)))
+                                {}
+                                m)
+                     (encode-to-str m)))]
+      (assoc m :id (f id)))
     m))
 
 (defn- encode-drawer
@@ -367,7 +383,8 @@
 
 (defn- simple-prepare-where
   [where]
-  (let [m (-> (id->mid where)
+  (let [m (-> (encode-id where)
+              (id->mid)
               (encode)
               (flatten-keys)
               (replace-query-ops))]
@@ -489,7 +506,8 @@
 
 (defn upsert
   [{:keys [db session *cache] :as dresser} drawer data]
-  (let [encoded (-> (id->mid data)
+  (let [encoded (-> (encode-id data)
+                    (id->mid)
                     (encode))]
     (->> (mc/find-one-and-replace db
                                   (drawer->coll [db session *cache] drawer :upsert)
@@ -512,7 +530,8 @@
   (mc/bulk-write db
                  (drawer->coll [db session *cache] drawer :upsert)
                  (for [doc docs
-                       :let [encoded (-> (id->mid doc)
+                       :let [encoded (-> (encode-id doc)
+                                         (id->mid)
                                          (encode))]]
                    [:replace-one {:filter      (select-keys encoded ["_id"])
                                   :replacement encoded

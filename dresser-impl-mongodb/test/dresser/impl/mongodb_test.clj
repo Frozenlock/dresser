@@ -57,3 +57,17 @@
                        {:a {:c {:d 2}}}]}
                 {:a {:b {db/lt 3, db/gt 1}}}
                 {:a {:b 3}}]})))
+
+(deftest complex-ids
+  (with-test-db [db (test-db)]
+    (let [id1 "id1"
+          id2 :id2
+          id3 [id1 id2]
+          not-id3 [id2 id1] ; not same order
+          id4 {id1 id2}
+          id5 #{id1 id2 id4}
+          docs [{:id id1} {:id id2} {:id id3} {:id id4} {:id id5}]]
+      (db/upsert-many! db :drawer docs)
+      (is (dt/u= (db/fetch db :drawer {:sort [[[:id] :desc]]})
+                 docs))
+      (is (db/fetch db :drawer {:where {:id not-id3}}) empty?))))
