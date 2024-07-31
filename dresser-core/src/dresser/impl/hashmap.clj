@@ -73,29 +73,41 @@
     (is (= maps (sort-maps-by [] maps)))))
 
 
+(defn- lax-compare
+  "Similar to compare, but will also return a value for items of different types.
+  For different types, offers no guarantee of consistency between JVM starts."
+  [x y]
+  (let [c1 (class x)
+        c2 (class y)]
+    (if (= c1 c2)
+      (compare x y)
+      (compare
+       (pr-str (.hashCode c1) x)
+       (pr-str (.hashCode c2) y)))))
+
 ;; Ops
 (defn- lt
   [data-entry field-key test-val]
   (some-> (get data-entry field-key)
-          (compare test-val)
+          (lax-compare test-val)
           (<  0)))
 
 (defn- lte
   [data-entry field-key test-val]
   (some-> (get data-entry field-key)
-          (compare test-val)
+          (lax-compare test-val)
           (<=  0)))
 
 (defn- gt
   [data-entry field-key test-val]
   (some-> (get data-entry field-key)
-          (compare test-val)
+          (lax-compare test-val)
           (>  0)))
 
 (defn- gte
   [data-entry field-key test-val]
   (some-> (get data-entry field-key)
-          (compare test-val)
+          (lax-compare test-val)
           (>=  0)))
 
 (defn- exists?

@@ -306,9 +306,10 @@
   [impl-f]
   (testing "Fetch"
     (let [;; Introduce randomness in docs order with :r
-          [d1 d2 d3 d4] [{:id 1, :sort {:a 1, :b 1}, :1 1, :r (rand)},
-                         {:id 2, :sort {:a 1, :b 2}, :1 1, :2 2, :r (rand)},
-                         {:id 3, :sort {:a 2, :b 2}, :1 1, :2 2, :3 3, :c {:d :nested, :n 4}, :r (rand)}
+          [d1 d2 d3 d4] [{:id 1, :sort {:a 1, :b 1}, :1 1, :r (rand), :type 1},
+                         {:id 2, :sort {:a 1, :b 2}, :1 1, :2 2, :r (rand), :type "a"},
+                         {:id 3, :sort {:a 2, :b 2}, :1 1, :2 2, :3 3,
+                          :c {:d :nested, :n 4}, :r (rand), :type #{1}}
                          {:id 4, :sort {:a 3} :r (rand)}]
           docs [d1 d2 d3 d4]]
       (db/tx-> (impl-f)
@@ -338,6 +339,10 @@
               (is-> (db/fetch :drawer1 {:where {:2 {db/lt 2}}}) (u= []))
               (is-> (db/fetch :drawer1 {:where {:1 {db/lte 2}}}) (u= [d1 d2 d3]))
               (is-> (db/fetch :drawer1 {:where {:2 {db/lte 2}}}) (u= [d2 d3])))
+
+            (testing-> " types comparison"
+              (is-> (db/fetch-count :drawer1 {:where {:type {db/lt 2}}}) (not= 0)
+                    "Doesn't throw"))
 
             (testing-> " - any"
               (testing-> " top level"
