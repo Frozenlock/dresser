@@ -1,16 +1,7 @@
 (ns dresser.extensions.lens
   "Extension for creating 'lenses' that provide a flexible
   and efficient way to reference, manipulate, and navigate nested data
-  structures within a dresser. Lenses combine the capabilities of
-  database references and objects, supporting nested paths and dynamic
-  updates.
-
-  Advantages:
-  - Simplifies accessing and updating deeply nested data.
-  - Integrates seamlessly with the existing dresser library.
-  - Supports transactional operations for consistent data manipulation.
-  - Allows for intuitive path-based data navigation and modification.
-
+  structures within a dresser.
   Example:
 
   (let [dresser (lens/lenses (hm/build))]
@@ -135,8 +126,7 @@
 
 (ext/defext lenses
   "A dresser variation which can contain a reference to a document or
-subdocument. When called as a function, it returns the data
-located at the reference, as if called with `get-at`."
+subdocument."
   []
   {:deps    []
    :init-fn #(vary-meta % merge {`-ref     (fn [dresser]
@@ -151,12 +141,4 @@ located at the reference, as if called with `get-at`."
   (db/raw-> (hm/build)
     (lenses)
     (add! :users {:name "Bob", :address {:street 100}})
-    (focus [:address]))
-
-  (let [l-address (db/raw-> (hm/build)
-                    (lenses)
-                    (add! :users {:name "Bob", :address {:street 100}})
-                    (focus [:address]))
-        l-address2 (db/raw-> l-address
-                     (assoc-at! [:street2] "second street"))]
-    (l-address2)))
+    (focus [:address])))
