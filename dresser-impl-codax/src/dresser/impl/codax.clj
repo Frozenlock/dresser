@@ -118,16 +118,16 @@ pathwise/side-effect
                               :reverse true)
                    (c/seek-from codax path start-key
                                 :limit chunk-size))))
-        data (if remove-first? (rest data) data)
-        last-key (first (last data))]
-    (if last-key
+        chunk-maxed? (= chunk-size (count data))
+        data (if remove-first? (rest data) data)]
+    (if chunk-maxed?
       (lazy-cat
        data
        (lazy-fetch codax path
-                        last-key
-                        end-key
-                        (min max-chunk-size (* 2 chunk-size))
-                        true reverse?))
+                   (first (last data)) ; last key
+                   end-key
+                   (min max-chunk-size (* 2 chunk-size))
+                   true reverse?))
       data)))
 
 
@@ -158,7 +158,7 @@ pathwise/side-effect
                                     [start-key end-key]))
                                 [(:id where) (:id where)])
           all-docs (let [inclusive-results (map second (lazy-fetch codax [drawer] start-key end-key
-                                                                   1 false sort-id-reverse?))
+                                                                   2 false sort-id-reverse?))
                          to-remove (set (vals (select-keys id-queries [::db/lt ::db/gt])))]
                      (cond->> inclusive-results
                        (seq to-remove) (remove to-remove)))]
