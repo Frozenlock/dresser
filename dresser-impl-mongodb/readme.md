@@ -32,6 +32,12 @@ While MongoDB disallows `listCollections`, `renameCollection` and `dropCollectio
 
 MongoDB collections are transparently mapped to Dresser drawers.
 
+### Safe `nil` Query
+
+Contrary to vanilla MongoDB, a query such as `{:id nil}` will NOT match everything.
+This helps avoid horrible mistakes, especially with `delete-many!`.
+
+
 ## Limitations
 
 Due to MongoDB limitations, renaming collections within a transaction is not possible. Therefore, Dresser maintains its own drawer registry to facilitate renames. Renaming drawers does not rename the underlying collections.
