@@ -88,6 +88,7 @@ pathwise/side-effect
 
 (defn- lazy-fetch
   [codax path start-key end-key chunk-size remove-first? reverse?]
+  ;; codax seeks are inclusive
   (let [max-chunk-size 64
         start-key (or start-key
                       (when-not end-key
@@ -156,16 +157,11 @@ pathwise/side-effect
                                     [end-key start-key]
                                     [start-key end-key]))
                                 [(:id where) (:id where)])
-          ;; Depending on the operators, choose an appropriate start and end key
-          id-ops (set (keys id-queries))
-          all-docs (let [results (map second (lazy-fetch codax [drawer] start-key end-key 1 false sort-id-reverse?))]
-                     (if sort-id-reverse?
-                       (cond->> results
-                         (id-ops ::db/lt) rest
-                         (id-ops ::db/gt) drop-last)
-                       (cond->> results
-                         (id-ops ::db/lt) drop-last
-                         (id-ops ::db/gt) rest)))]
+          all-docs (let [inclusive-results (map second (lazy-fetch codax [drawer] start-key end-key
+                                                                   1 false sort-id-reverse?))
+                         to-remove (set (vals (select-keys id-queries [::db/lt ::db/gt])))]
+                     (cond->> inclusive-results
+                       (seq to-remove) (remove to-remove)))]
       (->> (hm/fetch-from-docs all-docs only limit other-where (if sort-only-id? nil sort-config) skip)
            (doall)
            (db/with-result tx)))))
