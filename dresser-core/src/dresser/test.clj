@@ -706,6 +706,24 @@
   [impl-f]
   (is (db/temp-dresser-id (impl-f)) "Missing temp-dresser-id"))
 
+(defn test--lexical-encoding
+  [impl-f]
+  (let [n1 3
+        n2 15
+        n3 200
+        n4 10e10
+        expected-order [n1 n2 n3 n4]
+        docs (for [n (reverse expected-order)]
+               {:id (str "prefix2" (db/lexical-encode n)) :int n})
+        dresser (db/raw-> (impl-f)
+                  (db/upsert-many! :drawer1 docs)
+                  (db/upsert-many! :drawer1 [{:id "prefix1"}
+                                             {:id "prefixa"}]))]
+    (is (= expected-order
+           (map :int (db/fetch dresser :drawer1 {:where {:id {db/gte "prefix2"
+                                                              db/lt  (str "prefix2" db/lexical-max)}}
+                                                 :sort  [[[:id] :asc]]}))))))
+
 (defn test-impl
   [impl-f]
   (test--lazyness impl-f)
@@ -730,4 +748,5 @@
   (test--all-drawers impl-f)
   (test--dissoc-at impl-f)
   (test--has-drawer impl-f)
-  (test--temp-dresser-id impl-f))
+  (test--temp-dresser-id impl-f)
+  (test--lexical-encoding impl-f))

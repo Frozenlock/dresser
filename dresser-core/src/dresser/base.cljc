@@ -507,3 +507,55 @@
                  (with-result tx {})
                  drawers)]
     tx))
+
+
+(def ^:private lexical-chars
+  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+
+(def ^:private lexical-chars-enc
+  "Characters available for normal encoding."
+  (vec (butlast lexical-chars)))
+
+(def ^:private lexical-chars-qty (count lexical-chars-enc))
+
+;; Reserve the last character as a separator
+(def ^:private lexical-separator
+  "Character which comes after the lexical-chars-enc."
+  (str (last lexical-chars)))
+
+
+(def lexical-max
+  "Similar in purpose to Integer/MAX_VALUE, but for sorting strings."
+  ;; Sorts after all the lexical chars.
+  ;; While still being URL-safe, it should never used inside the encoding.
+  "~")
+
+(defn- int->enc [n]
+  (if (zero? n)
+    "0"
+    (loop [num n
+           result []]
+      (if (zero? num)
+        (apply str (reverse result))
+        (recur (quot num lexical-chars-qty)
+               (conj result (nth lexical-chars (rem num lexical-chars-qty))))))))
+
+(defn- enc->int [s]
+  (reduce (fn [acc c]
+            (+ (*' acc lexical-chars-qty)
+               (str/index-of lexical-chars (str c))))
+          0
+          s))
+
+(defn lexical-encode [n]
+  "Encodes an integer of arbitrary size into a lexically sortable string.
+`lexical-max` is guaranteed to sort after."
+  (let [encoded (int->enc n)
+        encoded-length (count encoded)
+        length-prefix (int->enc encoded-length)
+        prefix-prefix (apply str (repeat (dec (count length-prefix)) lexical-separator))]
+    (str prefix-prefix length-prefix lexical-separator encoded)))
+
+(defn lexical-decode [s]
+  (some-> (re-find (re-pattern (str "[^" lexical-separator "]*$")) s)
+          (enc->int)))
