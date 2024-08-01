@@ -5,10 +5,8 @@
             [clojure.string :as str]
             [clojure.walk :as w]
             [dresser.base :as db]
-            [dresser.impl.mongodb-test-utils :as tu]
             [dresser.impl.optional :as opt]
             [dresser.protocols :as dp]
-            [dresser.test :as dt]
             [hasch.core :as hashc]
             [mongo-driver-3.client :as mcl]
             [mongo-driver-3.collection :as mc])
@@ -598,26 +596,7 @@
     -with-temp-data]))
 
 
-(def ^:private *test-dressers (atom []))
-
 (defn build
-  {:test #(let [_ (tu/ensure-test-db!)
-                f (fn []
-                    (let [new (build {:db-name (str (gensym "dresser_test_db"))
-                                      :host    "127.0.0.1"
-                                      :port    27018})]
-                      (swap! *test-dressers conj new)
-                      new))]
-            ;; Dropping the DB takes ~100ms each time.
-            ;; Cleaning up in parallel at the end is significantly faster
-            (try
-              (dt/test-impl f)
-              (finally (doall (pmap (fn [dresser]
-                                      (do (.drop (:db dresser))
-                                          (.close (:client dresser))
-                                          (swap! *test-dressers (fn [ds]
-                                                                  (remove #{dresser} ds)))))
-                                    @*test-dressers)))))}
   ([db-configs] (build {} db-configs))
   ([m {:keys [db-name host port] :as db-configs
        :or   {port 27017, host "127.0.0.1"}}]

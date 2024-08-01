@@ -24,6 +24,27 @@
            (future (.drop (:db (first ~binding)))
                    (.close (:client (first ~binding)))))))))
 
+(def ^:private *test-dressers (atom []))
+
+(deftest implementation
+  (let [_ (tu/ensure-test-db!)
+        f (fn []
+            (let [new (impl/build {:db-name (str (gensym "dresser_test_db"))
+                                   :host    "127.0.0.1"
+                                   :port    27018})]
+              (swap! *test-dressers conj new)
+              new))]
+    ;; Dropping the DB takes ~100ms each time.
+    ;; Cleaning up in parallel at the end is significantly faster
+    (try
+      (dt/test-impl f)
+      (finally (doall (pmap (fn [dresser]
+                              (do (.drop (:db dresser))
+                                  (.close (:client dresser))
+                                  (swap! *test-dressers (fn [ds]
+                                                          (remove #{dresser} ds)))))
+                            @*test-dressers))))))
+
 (deftest support-dot-and-dollar-sign
   (with-test-db [db (test-db)]
     (let [drawer-key ::a.b$c
