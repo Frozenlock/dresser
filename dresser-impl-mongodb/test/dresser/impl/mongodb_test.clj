@@ -5,13 +5,6 @@
             [dresser.test :as dt]
             [dresser.impl.mongodb-test-utils :as tu]))
 
-(defn with-ensure-db
-  [f]
-  (tu/ensure-test-db!)
-  (f))
-
-(use-fixtures :once with-ensure-db)
-
 ;; TODO: check if renaming/dropping drawers is having the expected
 ;; effect on the underlying collections.
 
