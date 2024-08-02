@@ -29,10 +29,11 @@
 (dp/defimpl -assoc-at
   [tx drawer id ks data]
   (let [[tx doc] (db/dr (db/fetch-by-id tx drawer id))
-        new-doc (if (seq ks)
-                  (assoc-in doc ks data)
-                  data)]
-    (-> (db/replace! tx drawer id new-doc)
+        new-doc (-> (if (seq ks)
+                      (assoc-in doc ks data)
+                      data)
+                    (assoc :id id))]
+    (-> (db/upsert! tx drawer new-doc)
         (db/with-result data))))
 
 (dp/defimpl -dissoc-at
