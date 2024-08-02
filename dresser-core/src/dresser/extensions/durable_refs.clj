@@ -16,11 +16,13 @@
 
 (defn- ref*
   ([dresser drawer doc-id upsert?]
-   (db/tx-let [tx dresser]
-       [drawer-id (d-reg/drawer-id tx drawer upsert?)
-        dresser-id (when drawer-id (db/dresser-id tx))]
-     (db/with-result tx
-       (when drawer-id [dresser-id drawer-id doc-id])))))
+   (if doc-id
+     (db/tx-let [tx dresser]
+         [drawer-id (d-reg/drawer-id tx drawer upsert?)
+          dresser-id (when drawer-id (db/dresser-id tx))]
+       (db/with-result tx
+         (when drawer-id [dresser-id drawer-id doc-id])))
+     dresser)))
 
 (defn ref
   "Returns a ref if it exists, nil otherwise."
@@ -34,7 +36,7 @@
   [dresser drawer doc-id]
   (ref* dresser drawer doc-id :upsert))
 
-(defn- drawer
+(defn drawer
   "Returns the drawer associated with this ref."
   [dresser ref]
   (let [[dresser-id drawer-id _doc-id] ref]
