@@ -480,7 +480,8 @@
                           drawers-registry
                           {:drawer (encode-drawer drawer)}
                           {:$set {:expired? true}}
-                          {:session session})
+                          {:session session
+                           :upsert? true})
   (-> dresser
       (update :post-tx-fns conj #(drop-expired-collections! db))
       (db/with-result drawer)))
