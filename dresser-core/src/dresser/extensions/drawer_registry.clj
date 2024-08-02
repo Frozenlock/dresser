@@ -16,8 +16,21 @@
              [:email string?]
              ...]})
 
+(defn- drawer-count!
+  "Increments and returns the drawer count value."
+  [dresser]
+  ;; Should it be a random increment?  Are there situations where it
+  ;; would be useful to have distributed versions that can be merged
+  ;; back together?
+  (db/tx-> dresser
+    (db/update-at! db/drs-drawer :drs_drawer-registry [:drs_drawer-counter]
+                   (fn [x]
+                     ((fnil inc 0) x)))))
+
 (defn drawer-id
   "Returns a drawer ID.
+  String of the form <dresser-id>_<encoded-drawer-count>.
+
   If `upsert?` is true, create an ID and return it if none were found.
   Drawers can be renamed, but IDs should be forever."
   [dresser drawer upsert?]
@@ -26,7 +39,9 @@
        id (first d-ids)]
     (cond
       id (db/with-result tx id)
-      upsert? (let [[tx new-id] (db/dr (db/gen-id! tx registry))]
+      upsert? (let [[tx drawer-num] (db/dr (drawer-count! tx))
+                    [tx dresser-id] (db/dr (db/dresser-id tx))
+                    new-id (str dresser-id "_" (db/lexical-encode drawer-num))]
                 (-> (db/upsert! tx key->ids {:id drawer, :d-ids [new-id]})
                     (db/upsert! registry {:id new-id, :key drawer})
                     (db/with-result new-id)))
