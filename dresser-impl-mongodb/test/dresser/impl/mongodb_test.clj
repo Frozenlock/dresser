@@ -3,7 +3,8 @@
             [dresser.base :as db]
             [dresser.impl.mongodb :as impl]
             [dresser.test :as dt]
-            [dresser.impl.mongodb-test-utils :as tu]))
+            [dresser.impl.mongodb-test-utils :as tu])
+  (:import (org.bson.types ObjectId)))
 
 ;; TODO: check if renaming/dropping drawers is having the expected
 ;; effect on the underlying collections.
@@ -71,6 +72,11 @@
                        {:a {:c {:d 2}}}]}
                 {:a {:b {db/lt 3, db/gt 1}}}
                 {:a {:b 3}}]})))
+
+(deftest handle-mongo-object-id
+  (let [mid (ObjectId.)]
+    (is (= (impl/prepare-where {:id mid})
+           {"_id" mid}))))
 
 (deftest complex-ids
   (with-test-db [db (test-db)]

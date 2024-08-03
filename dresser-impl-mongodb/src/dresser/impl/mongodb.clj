@@ -10,7 +10,7 @@
             [hasch.core :as hashc]
             [mongo-driver-3.client :as mcl]
             [mongo-driver-3.collection :as mc])
-  (:import (org.bson.types Binary)))
+  (:import (org.bson.types Binary ObjectId)))
 
 ;; Support for '.' and '$' in collection and key names.  While docs
 ;; with '.' in keys can be fetched, it breaks things for `get-at` if
@@ -216,15 +216,19 @@
     m))
 
 (defn- encode-id
-  "IDs MUST be encoded to a string"
+  "IDs MUST be encoded to a string, or an ObjectId."
   [m]
   (if-let [id (:id m)]
-    (letfn [(f [m] (if (and (map? m) (some db/ops? (keys m)))
+    (letfn [(f [m] (cond
+                     (and (map? m) (some db/ops? (keys m)))
                      (reduce-kv (fn [m k v]
                                   (assoc m k (f v)))
                                 {}
                                 m)
-                     (encode-to-str m)))]
+
+                     (instance? org.bson.types.ObjectId m) m
+
+                     :else (encode-to-str m)))]
       (assoc m :id (f id)))
     m))
 
