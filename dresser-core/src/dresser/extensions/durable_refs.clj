@@ -6,22 +6,16 @@
             [dresser.protocols :as dp]
             [dresser.extensions.drawer-registry :as d-reg]))
 
-
-(defn- ref-drawer
-  "Returns a ref-drawer. Similar to the drawer object, but also contains
-  the dresser-id and the drawer-id"
-  [{:keys [drawer-key drawer-id dresser-id] :as args}]
-  args
-  )
-
 (defn- ref*
   ([dresser drawer doc-id upsert?]
    (if doc-id
-     (db/tx-let [tx dresser]
-         [drawer-id (d-reg/drawer-id tx drawer upsert?)
-          dresser-id (when drawer-id (db/dresser-id tx))]
-       (db/with-result tx
-         (when drawer-id [dresser-id drawer-id doc-id])))
+     (db/tx-> dresser
+       (d-reg/drawer-id drawer upsert?)
+       (db/update-result
+        (fn [x]
+          (when x {:drawer-id x
+                   :doc-id doc-id}))))
+
      dresser)))
 
 (defn ref
@@ -39,16 +33,12 @@
 (defn drawer
   "Returns the drawer associated with this ref."
   [dresser ref]
-  (let [[dresser-id drawer-id _doc-id] ref]
-    (db/tx-let [tx dresser]
-        [d-key (d-reg/drawer-key tx drawer-id)]
-      (db/with-result tx d-key))))
+  (d-reg/drawer-key dresser (:drawer-id ref)))
 
 (defn doc-id
   "Returns the document ID associated with this ref."
   [ref]
-  (let [[_dresser-id _drawer-id doc-id] ref]
-    doc-id))
+  (:doc-id ref))
 
 
 ;; Some convenience functions
@@ -119,11 +109,12 @@
 
 (defn get-at
   "`dp/get-at` but for refs"
-  {:arglists '([dresser d-ref ks])}
-  [dresser ref ks]
-  (db/tx-let [tx dresser]
-      [d-key (drawer tx ref)]
-    (db/get-at tx d-key (doc-id ref) ks)))
+  ([dresser ref ks] (get-at dresser ref ks nil))
+  ([dresser ref ks only]
+   (db/tx-let [tx dresser]
+       [d-key (drawer tx ref)]
+     (when d-key
+       (db/get-at tx d-key (doc-id ref) ks only)))))
 
 (defn delete!
   "`dp/delete` but for refs"
