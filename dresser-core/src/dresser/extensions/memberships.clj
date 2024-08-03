@@ -2,6 +2,7 @@
   "Provides groups/memberships relations between documents."
   (:require [dresser.base :as db]
             [dresser.extension :as ext]
+            [dresser.extensions.drawer-registry :as d-reg]
             [dresser.extensions.durable-refs :as refs]
             [dresser.protocols :as dp]))
 
@@ -14,21 +15,32 @@
 
 (defn- add-group-to-member! ; Can break relation if used alone
   [dresser member-ref grp-ref]
-  (db/tx-> dresser
-    (refs/assoc-at! member-ref [:drs_memberships :member-of grp-ref]
-                    true)))
+  (let [{:keys [doc-id drawer-id]} grp-ref]
+    (db/tx-> dresser
+      (refs/assoc-at! member-ref
+                      [:drs_memberships :member-of drawer-id doc-id]
+                      true))))
 
 (defn- remove-group-from-member! ; Can break relation if used alone
   [dresser member-ref grp-ref]
-  (db/tx-> dresser
-    (refs/dissoc-at! member-ref [:drs_memberships :member-of]  grp-ref)))
+  (let [{:keys [doc-id drawer-id]} grp-ref]
+    (db/tx-> dresser
+      (refs/dissoc-at! member-ref [:drs_memberships :member-of drawer-id] doc-id))))
 
 (defn memberships-of-member
-  "Returns all refs for which target is a member."
-  [dresser member-ref]
-  (db/tx-> dresser
-    (refs/get-at member-ref [:drs_memberships :member-of])
-    (db/update-result keys)))
+  "Returns all refs for which target is a member.
+  An optional drawer can be passed to select only members from this drawer."
+  ([dresser member-ref]
+   (memberships-of-member dresser member-ref nil))
+  ([dresser member-ref drawer]
+   (db/tx-let [tx dresser]
+       [drawer-ids (when drawer (d-reg/drawer-ids tx drawer))
+        drawer-id->docs (refs/get-at tx member-ref [:drs_memberships :member-of]
+                                     (not-empty drawer-ids))]
+     (for [[drawer-id docs] drawer-id->docs
+           [doc-id _] docs]
+       {:drawer-id drawer-id
+        :doc-id    doc-id}))))
 
 ;; The group
 
@@ -47,21 +59,28 @@
   Returns the grp-ref."
   [dresser grp-ref member-ref roles]
   (let [roles (roles-map roles)
-        roles? (not (empty? roles))]
+        roles? (not (empty? roles))
+        {:keys [drawer-id doc-id]} member-ref]
     (db/tx-> dresser
       (cond->
-          (not roles?) (-> (refs/update-at! grp-ref [:drs_memberships :member->roles] dissoc member-ref)
+          (not roles?) (-> (refs/dissoc-at! grp-ref [:drs_memberships :member->roles drawer-id] doc-id)
                            (remove-group-from-member! member-ref grp-ref))
-          roles? (-> (refs/assoc-at! grp-ref [:drs_memberships :member->roles member-ref] roles)
+          roles? (-> (refs/assoc-at! grp-ref [:drs_memberships :member->roles drawer-id doc-id] roles)
                      (add-group-to-member! member-ref grp-ref))
           true (db/with-result grp-ref)))))
 
 (defn members-of-group
   "Returns all the refs of members."
-  [dresser grp-ref]
-  (db/tx-> dresser
-    (refs/get-at grp-ref [:drs_memberships :member->roles])
-    (db/update-result (comp vec keys))))
+  ([dresser member-ref] (members-of-group dresser member-ref nil))
+  ([dresser member-ref drawer]
+   (db/tx-let [tx dresser]
+       [drawer-ids (when drawer (d-reg/drawer-ids tx drawer))
+        drawer-id->docs (refs/get-at tx member-ref [:drs_memberships :member->roles]
+                                     (not-empty drawer-ids))]
+     (for [[drawer-id docs] drawer-id->docs
+           [doc-id _roles] docs]
+       {:drawer-id drawer-id
+        :doc-id    doc-id}))))
 
 (defn remove-member-from-group!
   "Removes the member from a group.
@@ -83,14 +102,14 @@
   'roles' can be a map of roles or a collection of those keys."
   [dresser grp-ref roles]
   (let [roles-m (roles-map roles)]
-    (db/tx-> dresser
-      (refs/get-at grp-ref [:drs_memberships :member->roles])
-      (db/update-result (fn [member->roles]
-                          (->> (for [[member stored-roles] member->roles
-                                     :when (some roles-m (keys stored-roles))]
-                                 member)
-                               (remove nil?)
-                               (vec)))))))
+    (db/tx-let [tx dresser]
+        [member->roles (refs/get-at tx grp-ref [:drs_memberships :member->roles])]
+      (for [[drawer-id doc-id->roles] member->roles
+            [doc-id roles-m] doc-id->roles
+            :when (some-> (not-empty roles-m)
+                          (some roles))]
+        {:drawer-id drawer-id
+         :doc-id    doc-id}))))
 
 
 (defn leave-all-groups!

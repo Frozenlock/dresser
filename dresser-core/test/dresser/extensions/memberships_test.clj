@@ -15,12 +15,12 @@
       (dt/no-tx-reuse)))
 
 (deftest upsert-member
-  (let [dresser (test-dresser)
-        p1 (refs/ref! dresser :projects :p1)
-        p2 (refs/ref! dresser :projects :p2) ; test that we don't return unrelated groups
-        usr1 (refs/ref! dresser :users :usr1)
-        usr2 (refs/ref! dresser :users :usr2)]
-    (db/tx-> dresser
+  (db/tx-let [tx (test-dresser)]
+      [p1 (refs/ref! tx :projects :p1)
+       p2 (refs/ref! tx :projects :p2) ; test that we don't return unrelated groups
+       usr1 (refs/ref! tx :users :usr1)
+       usr2 (refs/ref! tx :users :usr2)]
+    (db/tx-> tx
       ;; No relations
       (dt/is-> (mbr/members-of-group p1) (= []))
       (dt/is-> (mbr/memberships-of-member usr1) empty?)
@@ -48,11 +48,11 @@
                "usr2 is unaffected"))))
 
 (deftest members-of-group-with-roles
-  (let [dresser (test-dresser)
-        p1 (refs/ref! dresser :projects :p1)
-        usr1 (refs/ref! dresser :users :usr1)
-        usr2 (refs/ref! dresser :users :usr2)]
-    (db/tx-> dresser
+  (db/tx-let [tx (test-dresser)]
+      [p1 (refs/ref! tx :projects :p1)
+       usr1 (refs/ref! tx :users :usr1)
+       usr2 (refs/ref! tx :users :usr2)]
+    (db/tx-> tx
       (mbr/upsert-group-member! p1 usr1 [:admin :editor])
       (mbr/upsert-group-member! p1 usr2 [:editor :visitor])
       (dt/is-> (mbr/members-of-group-with-roles p1 [:admin]) (= [usr1]))
@@ -62,24 +62,23 @@
       (dt/is-> (mbr/members-of-group-with-roles p1 nil) empty?))))
 
 (deftest add-with-roles
-  (let [dresser (test-dresser)
-        grp1 (refs/ref! dresser :groups :grp1)
-        doc {:name "Bob"}
-        drawer :api-keys]
-    (db/tx-let [tx dresser]
-        [id (mbr/add-with-roles! tx
-                                 grp1 [:reader] ; as reader in grp1
-                                 drawer doc ; add document in drawer
-                                 )]
-      (-> tx
-          (dt/is-> (db/fetch-by-id drawer id) ((fn [added-doc]
-                                                 (= doc (select-keys added-doc (keys doc)))))
-                   "Document is correctly added")
-          (dt/is-> ((fn [tx]
-                      (let [[tx doc-ref] (db/dr (refs/ref! tx drawer id))]
-                        (mbr/memberships-of-member tx doc-ref))))
-                   (= [grp1])
-                   "Document has membership")))))
+  (db/tx-let [tx (test-dresser)]
+      [grp1 (refs/ref! tx :groups :grp1)
+       doc {:name "Bob"}
+       drawer :api-keys
+       id (mbr/add-with-roles! tx
+                               grp1 [:reader] ; as reader in grp1
+                               drawer doc ; add document in drawer
+                               )]
+    (-> tx
+        (dt/is-> (db/fetch-by-id drawer id) ((fn [added-doc]
+                                               (= doc (select-keys added-doc (keys doc)))))
+                 "Document is correctly added")
+        (dt/is-> ((fn [tx]
+                    (let [[tx doc-ref] (db/dr (refs/ref! tx drawer id))]
+                      (mbr/memberships-of-member tx doc-ref))))
+                 (= [grp1])
+                 "Document has membership"))))
 
 (defn- add-docs
   "Adds n documents in a drawer and return their DB refs."

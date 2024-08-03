@@ -47,6 +47,11 @@
                     (db/with-result new-id)))
       :else (db/with-result tx nil))))
 
+(defn drawer-ids
+  "Returns all IDs associated with the drawer."
+  [dresser drawer]
+  (db/get-at dresser key->ids drawer [:d-ids]))
+
 (defn drawer-key
   "Returns the drawer key associated with this ID."
   [dresser drawer-id]
