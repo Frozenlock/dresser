@@ -282,7 +282,6 @@
 ;;     (keyword? sort-config) {[sort-config] :asc}
 ;;     (map? sort-config) (first )))
 
-
 (defn fetch
   {:doc (str (:doc (meta #'dp/-fetch)) tx-note)}
   ([dresser drawer]
@@ -465,14 +464,22 @@
          (let [query (if ?last-id
                        (assoc-in query [:where :id] {::gt ?last-id})
                        query)
+               ?only (when-let [only (some-> (:only query)
+                                             (only-sugar))]
+                       (assoc only :id :?))
                r (result tx)
                [tx' docs] (dr (fetch tx drawer (merge query {:sort  [[[:id] :asc]]
-                                                             :limit chunk-size})))
+                                                             :limit chunk-size}
+                                                      (when ?only {:only ?only}))))
+               last-id (:id (last docs))
+               docs (if (get-in query [:only :id])
+                      docs
+                      (map #(dissoc % :id) docs))
                tx' (with-result tx' r)
                tx' (reduce f tx' docs)]
            (if (< (count docs) chunk-size)
              tx'
-             (recur tx' (:id (last docs))))))))))
+             (recur tx' last-id))))))))
 
 
 
@@ -550,7 +557,7 @@
 (defn lexical-encode [n]
   "Encodes an integer of arbitrary size into a lexically sortable string.
 `lexical-max` is guaranteed to sort after."
-  (let [encoded (int->enc n)
+  (let [encoded (int->enc (bigint n))
         encoded-length (count encoded)
         length-prefix (int->enc encoded-length)
         prefix-prefix (apply str (repeat (dec (count length-prefix)) lexical-separator))]
