@@ -224,8 +224,6 @@
               `dp/-get-at             (fn [drawer id ks only]
                                         {:read (assoc-in {} (into [drawer id] ks) (or only :?))})
               `dp/-has-drawer?        never-f
-              `dp/-replace            (fn [drawer id _data]
-                                        {:write {drawer {id :?}}})
               `dp/-upsert-many        (fn [drawer _docs]
                                         {:write {drawer :?}})
               `dp/-dresser-id         -always

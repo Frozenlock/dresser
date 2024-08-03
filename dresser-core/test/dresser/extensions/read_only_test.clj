@@ -36,8 +36,7 @@
        (db/delete! dresser :drawer :id)
        (db/drop! dresser :drawer)
        (db/add! dresser :drawer {:a 1})
-       (db/update-at! dresser :drawer :id [:path] identity)
-       (db/replace! dresser :drawer :id {:a 1})))
+       (db/update-at! dresser :drawer :id [:path] identity)))
     (testing "Sanity check"
       ;; Quickly check that we didn't broke the other methods.
       (is (nil? (db/get-at dresser :drawer 1 [:path])))

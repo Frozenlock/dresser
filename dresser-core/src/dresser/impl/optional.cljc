@@ -87,12 +87,6 @@
       [cnt (db/fetch-count tx drawer)]
     (> cnt 0)))
 
-(dp/defimpl -replace
-  [tx drawer document-id data]
-  (let [[tx document] (db/dr (db/fetch-by-id tx drawer document-id {:only [:id]}))]
-    (-> (db/delete! tx drawer document-id)
-        (db/upsert! drawer (assoc data :id document-id)))))
-
 (dp/defimpl -dresser-id
   [tx]
   (let [[tx d-id] (db/dr (db/get-at tx db/drs-drawer db/drs-doc-id [:dresser-id]))]
@@ -137,6 +131,5 @@
     -get-at
     -has-drawer?
     -rename-drawer
-    -replace
     -update-at
     -upsert-many]))

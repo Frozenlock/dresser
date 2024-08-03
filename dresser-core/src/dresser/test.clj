@@ -537,22 +537,6 @@
             (db/dissoc-at! :drawer1 id [] :id)
             (is-> (db/get-at :drawer1 id []) :id))))))
 
-(defn test--replace
-  [impl-f]
-  (testing "Replace"
-    (db/tx-let [tx (impl-f)]
-        [doc1 {:a 1 :b "String"}
-         new-data {:data [1 2 3]}
-         id (db/add! tx :drawer1 doc1)]
-      (-> tx
-          (is-> (db/replace! :drawer1 id new-data) (= (assoc new-data :id id)))
-          (is-> (db/fetch-by-id :drawer1 id) (= (assoc new-data :id id)))
-
-          (testing-> "Can't overwrite document-id"
-            (db/replace! :drawer1 id {:id "new-id"})
-            (is-> (db/fetch-by-id :drawer1 id) (= {:id id}))
-            (is-> (db/fetch-by-id :drawer1 "new-id") nil?))))))
-
 (defn test--drop
   [impl-f]
   (testing "Drop"
@@ -739,7 +723,6 @@
   (test--dresser? impl-f)
   (test--upsert-&-fetch impl-f)
   (test--transact impl-f)
-  (test--replace impl-f)
   (test--upsert-many impl-f)
   (test--fetch impl-f)
   (test--add-&-fetch-by-id impl-f)
