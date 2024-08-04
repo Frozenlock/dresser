@@ -82,8 +82,19 @@
                   (let [new-path (conj curr-path k)]
                     (if (= k ::db/any)
                       ;; Handle $or conditions
-                      (let [extracted-ors (map #(extract-ors % curr-path []) v)
-                            [normals or-conditions] (apply map vector extracted-ors)
+                      (let [extracted-ors
+                            (if (and (sequential? v) (every? map? v))
+                              (map #(extract-ors % curr-path []) v)
+                              (let [inner-any? (some #(not (and (map? %)
+                                                                (not (db/ops? (keys %))))) v)]
+                                (map (fn [alt]
+                                       (reduce (fn [m k] {k m})
+                                               alt
+                                               (reverse (take-last (if inner-any? 2 1) curr-path))))
+                                     v)))
+                            [normals or-conditions] (if (and (sequential? v) (every? map? v))
+                                                      (apply map vector extracted-ors)
+                                                      [[] extracted-ors])
                             normalized (map #(when (seq %)
                                                (if (seq curr-path)
                                                  (assoc-in {} curr-path %)
@@ -377,7 +388,9 @@
 
 (defn- mongo-dotted-path
   "Given a list of keywords or strings, return a single
-   'mongo-dotted-path' with the dot notation."
+   'mongo-dotted-path' with the dot notation.
+
+  The dotted notation is necessary for partial subdocument matches."
   [coll]
   (->> (map #(if (string? %) (escape %) (encode %)) coll)
        (str/join "." )))
