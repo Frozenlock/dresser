@@ -24,6 +24,20 @@ Most Clojure MongoDB wrappers convert strings to keywords when fetching document
 Contrary to vanilla MongoDB, the Dresser implementation supports `$` and `.` in key names.
 In addition, the keys are not limited to strings and can be any of the supported types, including maps!
 
+### Partial Document Matches
+
+MongoDB has an akward interface for partial matches: the dot notation.
+Dresser will automatically convert any map query:
+```clj
+{:a {:b {:c1 1, :c2 2}}}
+```
+
+Into a dotted query:
+```js
+{"a.b.c1" 1
+ "a.b.c2" 2}
+ ```
+
 ### Improved Multi-Document Transactions
 
 While MongoDB disallows `listCollections`, `renameCollection` and `dropCollection` within transactions, Dresser handles `all-drawers`, `rename-drawer!` and `drop!` seamlessly.
