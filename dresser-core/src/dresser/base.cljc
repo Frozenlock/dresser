@@ -201,6 +201,22 @@
   `(transact! ~dresser (fn [tx#] (tx-> tx# ~@body)) {:result? false}))
 
 
+(defmacro txr->
+  "Threads the result of each expression through the rest of the forms.
+   The transaction (tx) is passed as the first argument to each form.
+   Returns the final transaction with the last result."
+  {:style/indent 1}
+  [dresser & forms]
+  (let [tx (gensym "tx-")
+        result (gensym "result-")
+        bindings (into [result `(~(ffirst forms) ~tx ~@(next (first forms)))]
+                       (mapcat #(list result `(~(first %) ~tx ~result ~@(next %)))
+                               (rest forms)))]
+    `(tx-let [~tx ~dresser]
+         ~bindings
+       ~result)))
+
+
 
 ;; Wrap all the methods into functions. We need to intercept a few
 ;; methods anyway for varargs and some syntactic sugar.
