@@ -131,37 +131,58 @@ pathwise/side-effect
       data)))
 
 
+(defn- fetch*
+  [codax drawer only limit where sort-config]
+  (or
+   ;; db/any brnanches might fetch multiple times the same docs.
+   ;; Could be optimized, if it becomes an issue.
+
+   ;; Top db/any
+   (when-let [top-any (::db/any where)]
+     (when (every? :id top-any)
+       (distinct (mapcat #(fetch* codax drawer only limit (:id %) sort-config) top-any))))
+
+   ;; Top inner db/any
+   (when-let [?id (:id where)]
+     (when-let [id-qs (when (map? ?id)
+                        (::db/any ?id))]
+       (distinct (mapcat #(fetch* codax drawer only limit (assoc where :id %) sort-config) id-qs))))
+
+   ;; Normal
+   (let [;; Documents are already sorted by ID.
+         ;; Leverage this ordering with seek-at/seek-from when possible.
+         sort-only-id? (and (= :id (first (ffirst sort-config)))
+                            (= 1 (count sort-config)))
+         sort-id-reverse? (and sort-only-id? (= :desc (second (first sort-config))))
+         ;; Identify if there's an :id query and isolate it
+         id-queries (when-let [id-q (:id where)]
+                      (when (and (map? id-q)
+                                 (some db/ops? (keys id-q)))
+                        id-q))
+         [start-key end-key] (if id-queries
+                               (let [start-key (or (::db/gte id-queries)
+                                                   (::db/gt id-queries))
+                                     end-key (or (::db/lte id-queries)
+                                                 (::db/lt id-queries))]
+                                 (if sort-id-reverse?
+                                   [end-key start-key]
+                                   [start-key end-key]))
+                               [(:id where) (:id where)])]
+     (let [to-remove (vals (select-keys id-queries [::db/lt ::db/gt]))
+           inclusive-results (lazy-fetch codax [drawer] start-key end-key
+                                         2 false sort-id-reverse?)]
+       (for [[k data] inclusive-results
+             :when (not (some #{k} to-remove))]
+         data)))))
+
 (dp/defimpl -fetch
   [tx drawer only limit where sort-config skip]
   (if (nil? (get where :id :not-found))
     (db/with-result tx '())
-    (let [codax (:codax tx)
-          ;; Documents are already sorted by ID.
-          ;; Leverage this ordering with seek-at/seek-from when possible.
+    (let [other-where (dissoc where :id)
           sort-only-id? (and (= :id (first (ffirst sort-config)))
                              (= 1 (count sort-config)))
-          sort-id-reverse? (and sort-only-id? (= :desc (second (first sort-config))))
-          ;; Identify if there's an :id query and isolate it
-          id-queries (when-let [id-q (:id where)]
-                       (when (and (map? id-q)
-                                  (some db/ops? (keys id-q)))
-                         id-q))
-          ;; Remove the id query from the where clause
-          other-where (dissoc where :id)
-          [start-key end-key] (if id-queries
-                                (let [start-key (or (::db/gte id-queries)
-                                                    (::db/gt id-queries))
-                                      end-key (or (::db/lte id-queries)
-                                                  (::db/lt id-queries))]
-                                  (if sort-id-reverse?
-                                    [end-key start-key]
-                                    [start-key end-key]))
-                                [(:id where) (:id where)])
-          all-docs (let [inclusive-results (map second (lazy-fetch codax [drawer] start-key end-key
-                                                                   2 false sort-id-reverse?))
-                         to-remove (set (vals (select-keys id-queries [::db/lt ::db/gt])))]
-                     (cond->> inclusive-results
-                       (seq to-remove) (remove to-remove)))]
+          all-docs (fetch* (:codax tx) drawer only limit where sort-config)]
       (->> (hm/fetch-from-docs all-docs only limit other-where (if sort-only-id? nil sort-config) skip)
            (doall)
            (db/with-result tx)))))
