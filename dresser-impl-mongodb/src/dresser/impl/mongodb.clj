@@ -288,6 +288,7 @@
                                              {:projection {:coll     1
                                                            :expired? 1
                                                            "_id"     0}
+                                              :sort       {"_id" -1}; most recent first
                                               :session    session})]
     (if (or (not coll) expired?)
       (let [coll-name (if expired?
@@ -333,7 +334,8 @@
                              :expired? {:$ne true}})
         expired-colls (set/difference (set (map :coll expired))
                                       (set (map :coll still-used)))]
-    (doseq [coll expired-colls]
+    (doseq [coll expired-colls
+            :when coll]
       (mc/drop db coll))
     (mc/delete-many db drawers-registry {:_id {:$in (map :_id expired)}})))
 

@@ -29,7 +29,7 @@ In addition, the keys are not limited to strings and can be any of the supported
 MongoDB has an akward interface for partial matches: the dot notation.
 Dresser will automatically convert any map query:
 ```clj
-{:a {:b {:c1 1, :c2 2}}}
+{"a" {"b" {"c1" 1, "c2" 2}}}
 ```
 
 Into a dotted query:
