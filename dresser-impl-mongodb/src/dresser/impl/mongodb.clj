@@ -136,18 +136,18 @@
 (defn- encode-coll
   [coll]
   (let [encode-key (cond
-                     (vector? coll) "_drs_vec"
-                     (list? coll) "_drs_list"
-                     (set? coll) "_drs_set"
-                     :else "drs_vec")]
+                     (vector? coll) "_v"
+                     (list? coll) "_l"
+                     (set? coll) "_s"
+                     :else "_v")]
     (into [encode-key] (map encode coll))))
 
 (defn- decode-coll
   [encoded-coll]
   (let [encode-key (first encoded-coll)
-        decoder {"_drs_vec"  #(mapv decode (rest %))
-                 "_drs_list" #(reverse (into '() (map decode (rest %))))
-                 "_drs_set"  #(set (map decode (rest %)))}]
+        decoder {"_v"  #(mapv decode (rest %))
+                 "_l" #(reverse (into '() (map decode (rest %))))
+                 "_s"  #(set (map decode (rest %)))}]
     (if-let [decode-fn (decoder encode-key)]
       (decode-fn encoded-coll)
       encoded-coll)))
@@ -177,8 +177,8 @@
     (keyword? x) (if (query-ops x)
                    x
                    (encode x))
-    :else (str "drs:mdb:edn("
-               (escape (pr-str (ordered-commutative-coll x))) ")")))
+    :else (str "_drs:edn:"
+               (escape (pr-str (ordered-commutative-coll x))))))
 (defn- encode
   [x]
   (cond
@@ -189,7 +189,7 @@
                          (encode v)]))
     (and (coll? x)
          (not (db/ops? x))) (encode-coll x)
-    (keyword? x) (str "drs:mdb:kw(" (escape (qualified-ident-name x)) ")")
+    (keyword? x) (str "_drs:kw:" (escape (qualified-ident-name x)))
     :else x))
 
 (defn- decode
@@ -199,7 +199,7 @@
                         [(decode k)
                          (decode v)]))
     (coll? x) (decode-coll x)
-    (string? x) (if-let [[a _drs xtype data] (re-matches #"^(drs:mdb:)(.*)\((.*)\)" x)]
+    (string? x) (if-let [[a _drs xtype data] (re-matches #"^(_drs:)(.*?):(.*)" x)]
                   (case xtype
                     "edn" (edn/read-string (unescape data))
                     "kw" (keyword (unescape data)))
