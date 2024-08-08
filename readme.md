@@ -1,6 +1,6 @@
 # Dresser
 
-<img width="200" align="left" src="https://raw.githubusercontent.com/Frozenlock/dresser/master/docs/img/dresser.jpeg">
+<img width="200" align="left" src="https://raw.githubusercontent.com/Frozenlock/dresser/master/doc/img/dresser.jpeg">
 
 A transactional storage abstraction for Clojure
 
