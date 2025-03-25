@@ -497,6 +497,36 @@
              tx'
              (recur tx' last-id))))))))
 
+(defn map-tx
+  "Maps a function over elements of a collection within a transaction context.
+  If called with only dresser and f, uses the dresser's result as the collection.
+  Returns a new dresser with the results as a sequence in the same order as the input.
+
+  Arguments:
+    dresser - The dresser object
+    f       - A function that takes (tx element) and returns an updated tx with a result
+    coll    - (Optional) The collection to process (defaults to current result)
+
+  Example:
+    (db/tx-> my-db
+      (db/fetch :users)
+      (db/map-tx (fn [tx user]
+                   (db/get-at tx :orders (:id user) [] {:only [:total]}))))"
+  ([dresser f]
+   (let [ret (result dresser)]
+     (assert (or (nil? ret)
+                 (coll? ret)) "Previous dresser result must be a collection")
+     (map-tx dresser f ret)))
+  ([dresser f coll]
+   (if (not-empty coll)
+     (with-tx [tx dresser]
+       (loop [tx tx, results '(), items coll]
+         (let [[tx' result] (dr (f tx (first items)))
+               results' (conj results result)]
+           (if-let [more-items (next items)]
+             (recur tx' results' more-items)
+             (with-result tx (reverse results'))))))
+     dresser)))
 
 
 (defn tx-failure-ex
