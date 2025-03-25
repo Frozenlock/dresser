@@ -134,7 +134,7 @@ pathwise/side-effect
 (defn- fetch*
   [codax drawer only limit where sort-config]
   (or
-   ;; db/any brnanches might fetch multiple times the same docs.
+   ;; db/any branches might fetch multiple times the same docs.
    ;; Could be optimized, if it becomes an issue.
 
    ;; Top db/any
