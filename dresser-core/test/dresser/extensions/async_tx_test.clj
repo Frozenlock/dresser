@@ -12,12 +12,14 @@
 (defn- immutable-dresser
   []
   (-> (hm/build)
-      (dt/sequential-id)))
+      (dt/sequential-id)
+      (dt/no-tx-reuse)))
 
 (defn- mutable-dresser
   []
   (-> (at/build)
-      (dt/sequential-id)))
+      (dt/sequential-id)
+      (dt/no-tx-reuse)))
 
 (deftest impl
   (testing "Nested"

@@ -114,7 +114,7 @@
         (.put queue {:tx-fn (fn [e] (deliver *result {::err e}))})
         (throw e)))))
 
-(defn long-lived-tx
+(defn- long-lived-tx
   [dresser f {:keys [queue tx-id *tx step]} opts]
   (let [timeout-ms (:timeout-ms opts 1000)
         step (or step :continue)]
