@@ -478,17 +478,18 @@
        (loop [tx tx
               ?last-id nil]
          (let [query (if ?last-id
-                       (assoc-in query [:where :id] {::gt ?last-id})
+                       (update-in query [:where :id] merge {::gt ?last-id})
                        query)
-               ?only (when-let [only (some-> (:only query)
-                                             (only-sugar))]
-                       (assoc only :id :?))
+               ?expanded-only (some-> (:only query)
+                                      (only-sugar))
                r (result tx)
                [tx' docs] (dr (fetch tx drawer (merge query {:sort  [[[:id] :asc]]
                                                              :limit chunk-size}
-                                                      (when ?only {:only ?only}))))
+                                                      (when ?expanded-only
+                                                        {:only (assoc ?expanded-only :id :?)}))))
                last-id (:id (last docs))
-               docs (if (get-in query [:only :id])
+               docs (if (or (:id ?expanded-only)
+                            (nil? ?expanded-only))
                       docs
                       (map #(dissoc % :id) docs))
                tx' (with-result tx' r)
