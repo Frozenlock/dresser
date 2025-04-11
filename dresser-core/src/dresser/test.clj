@@ -99,12 +99,13 @@
             (is ~`(~@test-form (-> ~dresser ~form)) ~msg))
           ~dresser)
        ;; Normal test without exception check
-       `(let [[dresser# ~'actual] (db/dr (-> ~dresser ~form))]
-          (is ~(if (seq? test-form)
-                 `(~@test-form ~'actual)
-                 (list test-form ~'actual))
-              ~msg)
-          dresser#)))))
+       `(binding [*disable-tx-counter* true]
+          (let [[dresser# ~'actual] (db/dr (-> ~dresser ~form))]
+            (is ~(if (seq? test-form)
+                   `(~@test-form ~'actual)
+                   (list test-form ~'actual))
+                ~msg)
+            dresser#))))))
 
 (defmacro testing->
   "Similar to `clojure.test/testing`.
