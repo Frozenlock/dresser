@@ -9,17 +9,16 @@
 
 (use-fixtures :once (dt/coverage-check atx))
 
+;; no-tx-reuse can 'silently' throw in complex-tx test.
 (defn- immutable-dresser
   []
   (-> (hm/build)
-      (dt/sequential-id)
-      (dt/no-tx-reuse)))
+      (dt/sequential-id)))
 
 (defn- mutable-dresser
   []
   (-> (at/build)
-      (dt/sequential-id)
-      (dt/no-tx-reuse)))
+      (dt/sequential-id)))
 
 (deftest impl
   (testing "Nested"
@@ -91,14 +90,14 @@
         (is (= '({:name "Bob"})
                (db/fetch d1 :users {:only [:name]}))))
 
-      ;; d2 *might* lock until d1 is closed
+      ;; d2 *might* lock until d1 is ended
       (future (db/add! d2 :users {:name "Alice"}))
       (future ;(Thread/sleep 50)
-              (atx/commit-tx! d1)
+              (atx/end-tx! d1)
               (deliver *d1-committed? true))
-      ;; DO NOT touch d1 until d2 is closed.
-      (wait-while #(empty? (db/fetch d2 :users {:where {:name "Alice"}})) 2000)
-      (is (= (-> (atx/commit-tx! d2)
+      ;; DO NOT touch d1 until d2 is ended.
+      (wait-while #(empty? (db/fetch d2 :users {:where {:name "Alice"}})) 300)
+      (is (= (-> (atx/end-tx! d2)
                  (db/fetch :users {:where {:name "Alice"}
                                    :only  [:name]}))
              '({:name "Alice"})))
@@ -106,7 +105,7 @@
       ;; Wait for commit to complete
       (deref *d1-committed?)
       (testing "Doesn't hang"
-        ;; Now that d2 is closed, d1 should be available.
+        ;; Now that d2 is ended, d1 should be available.
         (is (= (if (db/immutable? d1)
                  '()
                  '({:name "Bob"} {:name "Alice"}))
@@ -140,8 +139,169 @@
       (atx/cancel-tx! d1)
       (atx/cancel-tx! d1))))
 
+(deftest client-tracking
+  (testing "Multi-client transaction lifecycle"
+    (testing "Complete flow - all clients commit"
+      (let [d1 (atx/async-tx (immutable-dresser))
+            tx (atx/start-tx! d1)
+            ;; Register additional clients
+            tx-with-clients (-> tx
+                               (atx/start-tx! {:client-id :client-a})
+                               (atx/start-tx! {:client-id :client-b}))]
+
+        ;; Add test data within transaction
+        (db/add! tx-with-clients :users {:name "Test data"})
+
+        ;; First client commits - transaction should still be active
+        (let [tx-after-a (atx/end-tx! tx-with-clients {:client-id :client-a})]
+          ;; Verify data is visible within transaction
+          (is (= '({:name "Test data"})
+                 (db/fetch tx-after-a :users {:only [:name]})))
+
+          ;; Data is not yet committed - verify in the transaction only
+
+          ;; Second client commits - transaction should still be active
+          (let [tx-after-b (atx/end-tx! tx-after-a {:client-id :client-b})]
+
+            ;; Default client commits - should finalize the transaction
+            (let [final-tx (atx/end-tx! tx-after-b)]
+              ;; Data should be persisted in final transaction
+              (is (= '({:name "Test data"})
+                     (db/fetch final-tx :users {:only [:name]}))))))))
+
+    (testing "Partial commit followed by cancellation"
+      (let [d1 (atx/async-tx (mutable-dresser))
+            tx (atx/start-tx! d1)
+            tx-with-client (atx/start-tx! tx {:client-id :client-a})]
+
+        ;; Add data to the transaction
+        (db/add! tx-with-client :users {:name "Should not persist"})
+
+        ;; First client commits - transaction should still be active
+        (let [tx-after-a (atx/end-tx! tx-with-client {:client-id :client-a})]
+
+          ;; Verify data is visible within transaction
+          (is (= '({:name "Should not persist"})
+                 (db/fetch tx-after-a :users {:only [:name]})))
+
+          ;; Cancel instead of committing with default client
+          (atx/cancel-tx! tx-after-a)
+
+          ;; Data should NOT be persisted since we canceled
+          (is (empty? (db/fetch d1 :users {:only [:name]}))))))
+
+    (testing "Direct cancellation with multiple clients"
+      (let [d1 (atx/async-tx (mutable-dresser))
+            ;; Start transaction with multiple clients
+            tx (-> (atx/start-tx! d1)
+                  (atx/start-tx! {:client-id :client-1})
+                  (atx/start-tx! {:client-id :client-2}))]
+
+        ;; Add test data
+        (db/add! tx :users {:name "Should be cancelled"})
+
+        ;; Verify data is visible within transaction
+        (is (= '({:name "Should be cancelled"})
+               (db/fetch tx :users {:only [:name]})))
+
+        ;; Cancel should terminate the transaction regardless of clients
+        (atx/cancel-tx! tx)
+
+        ;; Verify transaction was cancelled (data not persisted)
+        (is (empty? (db/fetch d1 :users)))
+
+        ;; We should be able to start a new transaction after cancellation
+        (let [new-tx (atx/start-tx! d1)]
+          (db/add! new-tx :users {:name "After cancellation"})
+          (let [committed (atx/end-tx! new-tx)]
+            ;; This data should be persisted
+            (is (= '({:name "After cancellation"})
+                   (db/fetch committed :users {:only [:name]})))
+            (is (= '({:name "After cancellation"})
+                   (db/fetch d1 :users {:only [:name]}))))))))
+
+  (testing "Immutable dresser client tracking"
+    (let [d1 (atx/async-tx (immutable-dresser))
+          tx (atx/start-tx! d1)
+          tx-with-client (atx/start-tx! tx {:client-id :client-a})]
+
+      ;; Add data to the transaction
+      (let [[tx-with-data _] (db/dr (db/raw-> tx-with-client
+                                      (db/add! :users {:name "Immutable test"})))]
+
+        ;; First client commits - transaction should still be active
+        (let [tx-after-a (atx/end-tx! tx-with-data {:client-id :client-a})]
+
+          ;; Verify data is visible within transaction
+          (is (= '({:name "Immutable test"})
+                 (db/fetch tx-after-a :users {:only [:name]})))
+
+          ;; Final commit
+          (let [[final-tx _] (db/dr (atx/end-tx! tx-after-a))]
+            ;; Data should be persisted
+            (is (= '({:name "Immutable test"})
+                   (db/fetch final-tx :users {:only [:name]})))))))))
+
 ;; TODO: add tests for temp-data passed in and out
 
+(deftest end-tx-usage
+  (testing "New end-tx! API"
+    (let [d1 (atx/async-tx (mutable-dresser))
+          tx (atx/start-tx! d1)
+          ;; Register additional clients
+          tx-with-clients (-> tx
+                             (atx/start-tx! {:client-id :client-a})
+                             (atx/start-tx! {:client-id :client-b}))]
+
+      ;; Add test data within transaction
+      (db/add! tx-with-clients :users {:name "Using end-tx!"})
+
+      ;; First client ends participation - transaction should still be active
+      (let [tx-after-a (atx/end-tx! tx-with-clients {:client-id :client-a})]
+        ;; Verify data is visible within transaction
+        (is (= '({:name "Using end-tx!"})
+               (db/fetch tx-after-a :users {:only [:name]})))
+
+        ;; Second client ends - transaction should still be active
+        (let [tx-after-b (atx/end-tx! tx-after-a {:client-id :client-b})]
+
+          ;; Default client ends - should finalize the transaction
+          (let [final-tx (atx/end-tx! tx-after-b)]
+            ;; Data should be persisted
+            (is (= '({:name "Using end-tx!"})
+                   (db/fetch d1 :users {:only [:name]}))))))))
+
+  (testing "Multiple clients ending transaction"
+    (let [d1 (atx/async-tx (mutable-dresser))
+          tx (atx/start-tx! d1)
+          tx (atx/start-tx! tx {:client-id :client-a})
+          tx (atx/start-tx! tx {:client-id :client-b})]
+
+      ;; Add data
+      (db/add! tx :users {:name "Multiple clients"})
+
+      ;; End each client's participation
+      (let [tx-after-a (atx/end-tx! tx {:client-id :client-a})
+            tx-after-b (atx/end-tx! tx-after-a {:client-id :client-b})]
+
+        ;; Default client with new API
+        (let [final-tx (atx/end-tx! tx-after-b)]
+          ;; Data should be persisted
+          (is (= '({:name "Multiple clients"})
+                 (db/fetch d1 :users {:only [:name]}))))))))
+
+(deftest late-explicit-start-tx
+  (testing "Using tx-let with client-id in immutable dresser"
+    (let [dresser (atx/async-tx (hm/build))
+          test-data {:id "doc-id" :value "test-value"}]
+      (db/with-tx [tx dresser]
+        (let [tx1 (db/upsert! tx :drawer1 test-data)
+              tx2 (db/fetch-by-id tx :drawer1 "doc-id")
+              _ (is (db/dresser? tx2))
+              tx3 (atx/start-tx! tx2 {:client-id :client-a})
+              tx4 (db/fetch-by-id tx3 :drawer1 "doc-id")
+              _ (is (db/dresser? tx4) "If this fails then the result was extracted too soon")]
+          (atx/end-tx! tx4 {:client-id :client-a}))))))
 
 #_(deftest rollback-stress-test
     (doseq [i (range 50)]

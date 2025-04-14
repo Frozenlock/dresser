@@ -8,7 +8,11 @@
   :extend-via-metadata true
   (-start-tx [dresser opts] "Starts an async transaction.")
   (-cancel-tx [dresser opts] "Cancels an async transaction.")
-  (-commit-tx [dresser opts] "Commits an async transaction."))
+  (-end-tx [dresser opts] "Ends client participation in an async transaction."))
+
+; TODO: When manually starting a tx from inside an active TX, the
+; active TX should block (not end/commit) until the manually started
+; one is ended
 
 (def ^:dynamic *tx-states* {})
 
@@ -18,19 +22,44 @@
   (pos? (get *tx-states* tx-id 0)))
 
 (defn start-tx!
-  ([dresser] (start-tx! dresser {:result? false}))
+  "Start an async transaction. Returns dresser with transaction context.
+
+   With :client-id in opts, registers that client as using the transaction.
+   Without :client-id, uses the default client.
+
+   Multiple clients can use the same transaction concurrently. Each client
+   must eventually call end-tx! or cancel-tx!. The transaction only
+   finalizes when all clients have deregistered via end-tx!."
+  ([dresser] (start-tx! dresser {}))
   ([dresser opts]
-   (-start-tx dresser opts)))
+   (-start-tx dresser (update opts :result? #(or % false)))))
 
 (defn cancel-tx!
-  ([dresser] (cancel-tx! dresser {:result? false}))
-  ([dresser opts]
-   (-cancel-tx dresser opts)))
+  "Cancel an async transaction.
 
-(defn commit-tx!
-  ([dresser] (commit-tx! dresser {:result? false}))
+   Cancels the entire transaction regardless of active clients."
+  ([dresser] (cancel-tx! dresser {}))
   ([dresser opts]
-   (-commit-tx dresser opts)))
+   (-cancel-tx dresser (update opts :result? #(or % false)))))
+
+(defn end-tx!
+  "End a client's participation in an async transaction.
+
+   With :client-id in opts, deregisters that specific client from the transaction.
+   Without :client-id, deregisters the default client.
+
+   The transaction only truly commits when all registered clients have
+   deregistered by calling end-tx!. Until then, the transaction remains
+   open and active.
+
+   This behavior enables safe sharing of transaction context across multiple
+   components that shouldn't be responsible for managing each other's
+   transaction lifecycle."
+  ([dresser] (end-tx! dresser {}))
+  ([dresser opts]
+   (-end-tx dresser (update opts :result? #(or % false)))))
+
+
 
 (defn- process-transaction
   [tx tx-id queue opts *tx]
@@ -87,20 +116,26 @@
         (throw e)))))
 
 (defn- initialize-transaction
-  [dresser *tx queue tx-method opts tx-id]
-  (if (:initialized? @*tx)
-    dresser
-    (do
-      (swap! *tx assoc :initialized? true)
+  [dresser *tx-state queue tx-method opts tx-id]
+  (let [[old _new] (swap-vals! *tx-state
+                               (fn [tx-state]
+                                 (if (:initialized? tx-state)
+                                   tx-state
+                                   (let [default-client-id (keyword (gensym "default-client-"))]
+                                     (merge tx-state
+                                            {:initialized?      true
+                                             :default-client-id default-client-id
+                                             :clients           #{default-client-id}})))))]
+    (when-not (:initialized? old)
       (future
         (try
-          (when-let [{:keys [step] :as q} (.poll queue 30000 TimeUnit/MILLISECONDS)]
+          (when-let [{:keys [init-dresser] :as q} (.poll queue 30000 TimeUnit/MILLISECONDS)]
             (.put queue q)
-            (let [ended-dresser (execute-transaction dresser tx-method tx-id queue opts *tx)]
+            (let [ended-dresser (execute-transaction init-dresser tx-method tx-id queue opts *tx-state)]
               (handle-transaction-result ended-dresser)))
           (catch Exception e
-            (handle-transaction-error e *tx queue dresser tx-id))))
-      dresser)))
+            (handle-transaction-error e *tx-state queue dresser tx-id)))))
+       dresser))
 
 (defn- execute-transaction-step
   [tx f tx-id *result *tx queue]
@@ -120,12 +155,10 @@
         step (or step :continue)]
     (cond
 
-      ;; Would probably be more efficient to do a non-async
-      ;; transaction when it isn't required.
       (not (:initialized? @*tx))
       (-> (start-tx! dresser)
           (db/transact! f opts)
-          (commit-tx! opts))
+          (end-tx! opts))
 
       (nested-tx? tx-id)
       (f dresser)
@@ -135,6 +168,7 @@
             *result (promise)]
         (.put queue {:tx-fn (fn [tx]
                               (execute-transaction-step tx f tx-id *result *tx queue))
+                     :init-dresser dresser
                      :step step})
         (let [new-tx (deref *result timeout-ms {::err (ex-info "Result timeout" {:tx-id tx-id})})]
           (if-let [err (::err new-tx)]
@@ -149,10 +183,35 @@
 
 (ext/defext async-tx
   "Creates an async transaction wrapper around a dresser.
-  Enables the use of
-  - start-tx!
-  - cancel-tx!
-  - commit-tx!"
+
+   Provides transaction management with client tracking for safer shared
+   transaction contexts. Multiple components can share a transaction context
+   where the transaction only finalizes when all participants have completed.
+
+   Enables the use of:
+   - start-tx!  - Begin transaction and optionally register a client
+   - cancel-tx! - Immediately cancel transaction (all clients)
+   - end-tx!    - Deregister a client; commits when all clients done
+
+   Example usage with multiple clients:
+   ```
+   (def dresser (async-tx (atom-dresser)))
+
+   ;; Start transaction with default client
+   (def tx (start-tx! dresser))
+
+   ;; Register additional client
+   (def tx (start-tx! tx {:client-id :file-reader}))
+
+   ;; Work with transaction
+   (add! tx :users {:id 1 :name \"Alice\"})
+
+   ;; First client done
+   (def tx (end-tx! tx {:client-id :file-reader}))
+
+   ;; Default client done - only NOW does transaction actually commit
+   (end-tx! tx)
+   ```"
   []
   {;:throw-on-reuse? true
    :init-fn
@@ -165,69 +224,94 @@
         (fn [m]
           (let [tx-method (get m `dp/-transact)
 
-                ?commit-method (get m `-commit-tx)
-                commit (fn [dresser opts]
+                ?end-method (get m `-end-tx)
+                end-tx (fn [dresser opts]
                          (cond
                            (not (:initialized? @*tx-state))
-                           (throw (ex-info "Can't commit unstarted transaction" {}))
+                           (throw (ex-info "Can't end unstarted transaction" {}))
 
-                           (nested-tx? tx-id)
-                           (throw (ex-info "Commit cannot occur from within a transaction" {}))
+                           ;; (nested-tx? tx-id)
+                           ;; (throw (ex-info "End-tx cannot occur from within a transaction" {}))
 
                            :else
-                           (let [*return (promise)
-                                 f (fn [tx]
-                                     (->> (if ?commit-method
-                                            (let [r (?commit-method tx opts)]
-                                              (db/update-result r :result))
-                                            tx)
-                                          (deliver *return)))]
-                             (.put queue {:tx-fn f
-                                          :step  :end})
-                             (let [r (deref *return (:timeout-ms opts 1000) ::timeout)]
-                               (when (= r ::timeout)
-                                 (throw (ex-info "Timeout while committing" {})))
-                               r))))
+                           (let [client-id (:client-id opts)
+                                 ;; If no client-id provided, use the default
+                                 client-id (or client-id (:default-client-id @*tx-state))
+                                 clients (:clients @*tx-state)
+                                 ;; Remove this client from the set of active clients
+                                 remaining-clients (disj clients client-id)
+                                 last-client? (empty? remaining-clients)]
+
+                             ;; Update clients set
+                             (swap! *tx-state assoc
+                                    :clients remaining-clients
+                                    :initialized? (if last-client? false true))
+
+                             ;; Only actually commit if this was the last client
+                             (if last-client?
+                               (let [*return (promise)
+                                     f (fn [tx]
+                                         (->> (if ?end-method
+                                                (let [r (?end-method tx opts)]
+                                                  (db/update-result r :result))
+                                                tx)
+                                              (deliver *return)))]
+                                 (.put queue {:tx-fn f
+                                              :init-dresser dresser
+                                              :step  :end})
+                                 (let [r (deref *return (:timeout-ms opts 1000) ::timeout)]
+                                   (when (= r ::timeout)
+                                     (throw (ex-info "Timeout while committing" {})))
+                                   r))
+                               ;; Not the last client, just return the dresser
+                               dresser))))
 
                 ?cancel-method (get m `-cancel-tx)
                 cancel (fn [dresser opts]
                          (if-not (:initialized? @*tx-state)
                            dresser
-                           (let [*return (promise)
-                                 f (fn [_tx]
-                                     (throw (ex-info "Transaction cancelled" {:cancel-fn #(deliver *return %)
-                                                                              :cancel-id tx-id})))
-                                 _ (.put queue {:tx-fn f
-                                                :step  :cancel})
-                                 ret (deref *return (:timeout-ms opts 1000) ::timeout)]
-                             (.clear queue)
-                             (if (= ret ::timeout)
-                               (throw (ex-info (str "Timeout while cancelling " tx-id) {}))
-                               ret))))
+                           (do
+                             ;; Clear all clients - ensure a clean cancellation
+                             (swap! *tx-state assoc :clients #{} :initialized? false)
+                             (let [*return (promise)
+                                   f (fn [_tx]
+                                       (throw (ex-info "Transaction cancelled" {:cancel-fn #(deliver *return %)
+                                                                                :cancel-id tx-id})))
+                                   _ (.put queue {:tx-fn f
+                                                  :init-dresser dresser
+                                                  :step  :cancel})
+                                   ret (deref *return (:timeout-ms opts 1000) ::timeout)]
+                               (.clear queue)
+                               (if (= ret ::timeout)
+                                 (throw (ex-info (str "Timeout while cancelling " tx-id) {}))
+                                 ret)))))
 
                 ?start-method (get m `-start-tx)
                 start (fn [dresser opts]
-                        (cond-> dresser
-                          ?start-method (?start-method opts)
-                          true (initialize-transaction *tx-state queue tx-method opts tx-id)))]
+                        (let [tx (cond-> dresser
+                                   ?start-method (?start-method opts)
+                                   true (initialize-transaction *tx-state queue tx-method opts tx-id))
+                              ;; Handle client registration if tx is initialized
+                              client-id (:client-id opts)]
+                          ;; If a specific client ID was provided, register it
+                          (when (and client-id (:initialized? @*tx-state))
+                            (swap! *tx-state update :clients conj client-id))
+                          tx))]
 
             (merge
              m
              {`-start-tx start
-              `-commit-tx commit
+              `-end-tx end-tx
               `-cancel-tx cancel
-              :started? *tx-state
               `dp/-transact
               (fn [tx f opts]
-                (if-not (:initialized? @*tx-state)
-                  (tx-method tx f opts)
-                  (let [tx' (long-lived-tx tx
-                                           f
-                                           {:*tx   *tx-state
-                                            :tx-id tx-id
-                                            :queue queue}
-                                           (assoc opts :result? false))]
-                    (if (and (zero? (get *tx-states* tx-id 0))
-                             (:result? opts))
-                      (db/result tx')
-                      tx'))))}))))))})
+                (let [tx' (long-lived-tx tx
+                                         f
+                                         {:*tx   *tx-state
+                                          :tx-id tx-id
+                                          :queue queue}
+                                         (assoc opts :result? false))]
+                  (if (and (zero? (get *tx-states* tx-id 0))
+                           (:result? opts))
+                    (db/result tx')
+                    tx')))}))))))})
