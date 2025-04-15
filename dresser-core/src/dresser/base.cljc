@@ -269,7 +269,9 @@
   (only-sugar [:a :b]) => {:a true, :b true}
 
   Also converts any node collection:
-  (only-sugar {:z {[:a :b] [:c]}}) => {:z {[:a :b] {:c true}}}"
+  (only-sugar {:z {[:a :b] [:c]}}) => {:z {[:a :b] {:c true}}}
+
+  Avoids re-processing already expanded maps using metadata."
   [only]
   (letfn [(expand [only]
             (cond
@@ -283,20 +285,6 @@
               :else (throw (ex-info "Expects a map or a coll" {}))))]
     (some-> (expand only)
             (vary-meta assoc ::only-expanded? true))))
-
-
-;; {:sort :a}
-;; {:sort {:a :desc}}
-;; {:sort [{:a :desc}
-;;         {:b :asc}]}
-;; {:sort [[[:a :a2] :asc]
-;;         [[:a :v2] :desc]]} ;<-- final form
-;; (defn- sort-sugar
-;;   [sort-config]
-;;   (cond
-;;     (map? sort-config) (if (key))
-;;     (keyword? sort-config) {[sort-config] :asc}
-;;     (map? sort-config) (first )))
 
 (defn fetch
   {:doc (str (:doc (meta #'dp/-fetch)) tx-note)}
@@ -313,59 +301,6 @@
   ([dresser drawer id ks only]
    (tx-> dresser
      (dp/-get-at drawer id ks (only-sugar only)))))
-
-
-;; EXPERIMENTAL
-;; Cannot be used inside a transaction.
-;; Will probably remove.
-(defn lfetch
-  "Lazy version of `fetch`."
-  ([dresser drawer]
-   (lfetch dresser drawer {}))
-  ([dresser drawer {:keys [only limit where sort skip] :as opts}]
-   (lfetch dresser drawer opts 1 nil))
-  ([dresser drawer {:keys [only limit where sort skip] :as opts} chunk-size previous-last]
-   ;; TODO: 'only' can remove necessary keys
-   (let [max-chunk-size 512
-         ;; Must provide a sort as there's no guarantee of ordering
-         ;; and and we could end up with duplicates or skip values.
-         sort (or (not-empty sort) [[[:id] :asc]])
-         [main-sort-path main-sort-dir] (first sort)
-         ;; Sort is a killer.  Unless there's an index on the sorted
-         ;; field, lazyness will make it much more slower as it will
-         ;; force re-sorting multiple times.
-         new-opts (assoc (dissoc opts :only)
-                         :sort sort
-                         :limit (if limit (min limit chunk-size)
-                                    chunk-size))
-         ;_ (clojure.pprint/pprint opts)
-         results (fetch dresser drawer new-opts)]
-     ;(clojure.pprint/pprint results)
-     (when (not-empty results)
-       (let [last-result (last results)
-             main-sort-last-value (get-in last-result main-sort-path)
-             main-sort-previous-last (get-in previous-last main-sort-path)
-             main-sort-dup (count (filter #(= main-sort-last-value
-                                              (get-in % main-sort-path))
-                                          results))
-             skip (if (= main-sort-previous-last main-sort-last-value)
-                    (+ (or skip 0) main-sort-dup)
-                    main-sort-dup)
-             next-where (assoc-in where
-                                  (conj main-sort-path (if (= main-sort-dir :desc)
-                                                         ::lte
-                                                         ::gte))
-                                  (get-in last-result main-sort-path))
-
-             next-limit (some-> limit (- chunk-size))
-             next-chunk-size (min max-chunk-size (* 2 chunk-size) (if limit next-limit max-chunk-size))]
-         (lazy-cat results
-                   (lfetch dresser drawer (assoc opts
-                                                 :skip skip
-                                                 :where next-where
-                                                 :limit next-limit)
-                           next-chunk-size last-result)))))))
-
 
 (defn fetch-by-id
   {:doc (str (:doc (meta #'dp/-fetch-by-id)) tx-note)}
