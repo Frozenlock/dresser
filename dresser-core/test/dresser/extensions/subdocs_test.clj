@@ -4,7 +4,7 @@
             [dresser.extensions.durable-refs :as refs]
             [dresser.extensions.subdocs :as subdocs]
             [dresser.impl.hashmap :as hm]
-            [dresser.test :as dt]))
+            [dresser.test :as dt :refer [u=]]))
 
 (use-fixtures :once (dt/coverage-check subdocs))
 
@@ -30,6 +30,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+
 (deftest subdocs
   (testing "public fns"
     (db/tx-let [tx (test-dresser)]
@@ -37,15 +38,15 @@
       (-> tx
           (dt/is-> (subdocs/all-ancestors d3) nil?)
           (dt/is-> (subdocs/add-child! d1 d2) (= d1))
-          (dt/is-> (subdocs/children d1) (= [d2]))
-          (dt/is-> (subdocs/all-ancestors d2) (= [d1]))
+          (dt/is-> (subdocs/children d1) #(u= % [d2]))
+          (dt/is-> (subdocs/all-ancestors d2) #(u= % [d1]))
           (subdocs/add-child! d2 d3)
-          (dt/is-> (subdocs/all-ancestors d3) (= [d2 d1]))
+          (dt/is-> (subdocs/all-ancestors d3) #(u= % [d2 d1]))
           (dt/is-> (subdocs/add-child! d3 d1)
                    (thrown-with-msg? clojure.lang.ExceptionInfo #"Circular children loop detected"))
           (dt/is-> (subdocs/remove-child! d2 d3) nil?)
           (dt/is-> (subdocs/all-ancestors d3) nil?)
-          (dt/is-> (subdocs/all-ancestors d2) (= [d1]))
+          (dt/is-> (subdocs/all-ancestors d2) #(u= % [d1]))
           (dt/is-> (subdocs/remove-parent! d2) nil?)
           (dt/is-> (subdocs/all-ancestors d2) nil?))))
   (testing "extension delete"
@@ -64,9 +65,9 @@
             (dt/is-> (refs/fetch-by-ref d5) some?))
           (dt/testing-> "Remove parent relation"
             (subdocs/add-child! d5 d6)
-            (dt/is-> (subdocs/children d5) (= [d6]))
+            (dt/is-> (subdocs/children d5) #(u= % [d6]))
             (refs/delete! d6)
-            (dt/is-> (subdocs/children d5) nil?))))
+            (dt/is-> (subdocs/children d5) empty?))))
     (testing "extension drop"
       (db/tx-let [tx (subdocs/keep-sync (test-dresser))]
           [[o1 o2 & orgs] (add-docs tx :orgs 52)
