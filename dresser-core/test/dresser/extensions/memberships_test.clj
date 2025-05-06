@@ -22,7 +22,7 @@
        usr2 (refs/ref! tx :users :usr2)]
     (db/tx-> tx
       ;; No relations
-      (dt/is-> (mbr/members-of-group p1) (= []))
+      (dt/is-> (mbr/members-of-group p1) empty?)
       (dt/is-> (mbr/memberships-of-member usr1) empty?)
       (dt/is-> (mbr/memberships-of-member usr2) empty?)
       ;; Add a member with roles
@@ -105,7 +105,7 @@
           (dt/testing-> "delete group"
             (refs/delete! grp1)
 
-            (dt/is-> (mbr/members-of-group grp1) (= []))
+            (dt/is-> (mbr/members-of-group grp1) empty?)
             (dt/is-> (mbr/members-of-group grp2) (= [usr1]))
             (dt/is-> (mbr/memberships-of-member usr1) (= [grp2])))
           (dt/testing-> "delete user"

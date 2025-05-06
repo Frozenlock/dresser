@@ -3,7 +3,8 @@
             [dresser.extension :as ext]
             [dresser.extensions.durable-refs :as refs]
             [dresser.extensions.memberships :as mbr]
-            [dresser.protocols :as dp]))
+            [dresser.protocols :as dp]
+            [dresser.extensions.relations :as rel]))
 
 ;; For maximum compatibility, permissions should always be the same.
 (def allowed-permissions #{:add :delete :read :write})
@@ -380,15 +381,15 @@
   [member-ref method-sym method tx args request]
   (let [[drawer id & _] args
         [tx grp-ref] (db/dr (refs/ref! tx drawer id))
-        error (ex-info "Missing permission"
-                       {:by      member-ref
-                        :method  (name method-sym)
-                        :request request
-                        :doc-req (doc-request drawer id request)
-                        :target  grp-ref
-                        :type    ::permission})
+        make-error (fn [] (ex-info "Missing permission"
+                                   {:by      member-ref
+                                    :method  (name method-sym)
+                                    :request request
+                                    :doc-req (doc-request drawer id request)
+                                    :target  grp-ref
+                                    :type    ::permission}))
         _ (when (::never request)
-            (throw error))]
+            (throw (make-error)))]
 
     (cond
 
@@ -396,15 +397,24 @@
       (= member-ref grp-ref)
       (let [[tx id] (db/dr (db/get-at tx drawer id [:id]))]
         (if-not id
-          (throw error)
+          (throw (make-error))
           tx))
+
+      ;; Relations use the same rights as their target document
+      (= drawer rel/rel-drawer)
+      (let [[op rel-drawer->x] (first request)
+            [_drawer doc-ref->y] (first rel-drawer->x)
+            [[target-drawer doc-id] y] (first doc-ref->y)
+            new-req {op {target-drawer {doc-id {:fake-relations (:rels y)}}}}
+            [_old-drawer _old-id & new-args] args]
+        (default-check member-ref method-sym method tx [target-drawer doc-id new-args] new-req))
 
       ;; Normal behavior for every other drawer
       :else
       (let [doc-r (doc-request drawer id request)
             [tx pchain] (db/dr (permission-chain tx grp-ref doc-r member-ref))]
         (if (empty? pchain)
-          (throw error)
+          (throw (make-error))
           tx)))))
 
 
