@@ -31,7 +31,7 @@
 
 (defn set-ref!
   [dresser ref]
-  (-set-ref dresser ref))
+  (db/raw-> dresser (-set-ref ref)))
 
 ;;;;
 
@@ -73,13 +73,17 @@
 (defn dissoc-at!
   ([lens]
    (let [{:keys [drawer doc-id path]} (ref lens)
+         ;; TODO: delete the document if we try to dissoc an empty path?
          _ (when-not (seq path)
-             (throw (ex-info "Can't dissoc a lens if its path is empty")))
+             (throw (ex-info "Can't dissoc a lens if its path is empty" {:drawer drawer
+                                                                         :doc-id doc-id})))
          [path dissoc-k] [(butlast path) (last path)]]
      (db/dissoc-at! lens drawer doc-id path dissoc-k)))
   ([lens ks & dissoc-ks]
-   (let [{:keys [drawer doc-id path]} (ref lens)]
-     (apply db/dissoc-at! lens drawer doc-id (into (or path []) ks) dissoc-ks))))
+   (if-not (or (seq ks) (seq dissoc-ks))
+     (dissoc-at! lens)
+     (let [{:keys [drawer doc-id path]} (ref lens)]
+       (apply db/dissoc-at! lens drawer doc-id (into (or path []) ks) dissoc-ks)))))
 
 (defn- lens?
   "True if dresser supports lenses"
