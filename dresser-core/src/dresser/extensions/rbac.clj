@@ -4,7 +4,8 @@
             [dresser.extensions.durable-refs :as refs]
             [dresser.extensions.memberships :as mbr]
             [dresser.protocols :as dp]
-            [dresser.extensions.relations :as rel]))
+            [dresser.extensions.relations :as rel]
+            [dresser.extensions.drawer-registry :as d-reg]))
 
 ;; For maximum compatibility, permissions should always be the same.
 (def allowed-permissions #{:add :delete :read :write})
@@ -390,7 +391,6 @@
                                     :type    ::permission}))
         _ (when (::never request)
             (throw (make-error)))]
-
     (cond
 
       ;; Member can update itself if it exists
@@ -404,10 +404,11 @@
       (= drawer rel/rel-drawer)
       (let [[op rel-drawer->x] (first request)
             [_drawer doc-ref->y] (first rel-drawer->x)
-            [[target-drawer doc-id] y] (first doc-ref->y)
-            new-req {op {target-drawer {doc-id {:fake-relations (:rels y)}}}}
+            [[target-drawer-id doc-id] y] (first doc-ref->y)
+            [tx target-drawer-key] (db/dr (d-reg/drawer-key tx target-drawer-id))
+            new-req {op {target-drawer-key {doc-id {:fake-relations (:rels y)}}}}
             [_old-drawer _old-id & new-args] args]
-        (default-check member-ref method-sym method tx [target-drawer doc-id new-args] new-req))
+        (default-check member-ref method-sym method tx [target-drawer-key doc-id new-args] new-req))
 
       ;; Normal behavior for every other drawer
       :else
@@ -485,7 +486,7 @@
   {:deps [mbr/keep-sync]
    ;:throw-on-reuse? true
    :wrap-configs
-   (let [wrapper-id (gensym "RBAC-")]
+   (let [wrapper-id (str (gensym "RBAC-"))]
      (into {} (for [sym dp/dresser-symbols
                     :let [wrap (permission-wrapper member-ref sym permissions wrapper-id)]
                     :when wrap]

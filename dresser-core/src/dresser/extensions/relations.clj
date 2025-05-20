@@ -126,6 +126,7 @@
 
 
 (comment
+  (require '[dresser.impl.hashmap :as hm])
   (let [r1 {:drawer-id 1, :doc-id 1}
         r2 {:drawer-id 2, :doc-id 2}
         r3 {:drawer-id 3, :doc-id 3}]
