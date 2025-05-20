@@ -293,11 +293,11 @@
 (defn- base-impl-build
   {:test #(dt/test-impl (fn [] (dt/no-tx-reuse (base-impl-build {}))))}
   [m]
-  (-> (vary-meta {:db (into (sorted-map) m)}
-                 merge
-                 {:type ::db/immutable-dresser}
-                 opt/optional-impl
-                 hashmap-base-impl)
+  (-> (db/make-dresser {:db (into (sorted-map) m)} true)
+      (vary-meta
+       merge
+       opt/optional-impl
+       hashmap-base-impl)
       (db/with-temp-dresser-id)))
 
 (defn build

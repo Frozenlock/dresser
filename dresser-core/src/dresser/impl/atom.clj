@@ -49,10 +49,9 @@
    (let [inner-dresser (cond
                          (db/dresser? map-or-dresser) map-or-dresser
                          (map? map-or-dresser) (hm/build map-or-dresser))]
-     (-> {:*source (atom inner-dresser)
-          :data    (db/temp-data inner-dresser)
-          :lock    (gensym "lock-")}
-         (with-meta (merge
-                     (meta inner-dresser)
-                     {:type ::db/dresser}
-                     atom-impl))))))
+     (-> (with-meta {:*source (atom inner-dresser)
+                     :data    (db/temp-data inner-dresser)
+                     :lock    (gensym "lock-")}
+           (meta inner-dresser))
+         (db/make-dresser false)
+         (vary-meta merge atom-impl)))))

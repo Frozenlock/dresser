@@ -622,14 +622,14 @@
        :or   {port 27017, host "127.0.0.1"}}]
    (let [client (mcl/create (str "mongodb://" host ":" port))
          db (mcl/get-db client db-name)]
-     (-> (vary-meta {:client     client
-                     :db         db
-                     :db-configs db-configs
-                     :*cache     (cw/lru-cache-factory {})}
-                    merge
+     (-> (db/make-dresser {:client     client
+                           :db         db
+                           :db-configs db-configs
+                           :*cache     (cw/lru-cache-factory {})}
+                          false)
+         (vary-meta merge
                     opt/optional-impl
-                    (mongo-impl)
-                    {:type ::db/dresser})
+                    (mongo-impl))
          (db/with-temp-dresser-id)))))
 
 

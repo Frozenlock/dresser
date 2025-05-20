@@ -5,19 +5,24 @@
 
 ;; TODO: When ID is nil, should methods be no-op and return nil?
 
+(defrecord Dresser [])
 
 (defn dresser?
   "Returns true if x is of type ::dresser (checks via metadata)."
   [x]
   ;; Currently (clojure 1.11.1) `satisfies?` doesn't work with methods
-  ;; provided via metadata. Fallback on types instead.
-  (isa? (type x) ::dresser))
+  ;; provided via metadata. Fallback on record instead.
+  (= (type x) Dresser))
 
-(derive ::immutable-dresser ::dresser)
+(defn make-dresser
+  [inner-map immutable?]
+  (-> (into (->Dresser) inner-map)
+      (with-meta (meta inner-map))
+      (vary-meta assoc ::immutable? immutable?)))
 
 (defn immutable?
   [x]
-  (= (type x) ::immutable-dresser))
+  (::immutable? (meta x)))
 
 (defn temp-data
   {:doc (:doc (meta #'dp/-temp-data))}
