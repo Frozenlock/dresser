@@ -182,11 +182,11 @@
 (defn- encode
   [x]
   (cond
-    (map? x) (into {} (for [[k v] x]
-                        ;; Mongo doesn't support much besides strings
-                        ;; as keys. Serialize if necessary.
-                        [(encode-to-str k)
-                         (encode v)]))
+    (map? x) (reduce-kv (fn [acc k v]
+                          ;; Mongo doesn't support much besides strings
+                          ;; as keys. Serialize if necessary.
+                          (assoc acc (encode-to-str k) (encode v)))
+                        {} x)
     (and (coll? x)
          (not (db/ops? x))) (encode-coll x)
     (keyword? x) (str "_drs:kw:" (escape (qualified-ident-name x)))
@@ -195,9 +195,9 @@
 (defn- decode
   [x]
   (cond
-    (map? x) (into {} (for [[k v] x]
-                        [(decode k)
-                         (decode v)]))
+    (map? x) (reduce-kv (fn [acc k v]
+                          (assoc acc (decode k) (decode v)))
+                        {} x)
     (coll? x) (decode-coll x)
     (string? x) (if-let [[a _drs xtype data] (re-matches #"^(_drs:)(.*?):(.*)" x)]
                   (case xtype
@@ -405,12 +405,13 @@
               (encode)
               (flatten-keys)
               (replace-query-ops))]
-    (into {} (for [[k v] m]
-               [(mongo-dotted-path k)
-                (if (nil? v)
-                  {:$exists true,
-                   :$eq nil}
-                  v)]))))
+    (reduce-kv (fn [acc k v]
+                 (assoc acc (mongo-dotted-path k)
+                        (if (nil? v)
+                          {:$exists true,
+                           :$eq nil}
+                          v)))
+               {} m)))
 
 (defn- prepare-where*
   [where]

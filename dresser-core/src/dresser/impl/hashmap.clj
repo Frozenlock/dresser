@@ -15,11 +15,14 @@
      (take-from source query ::drop-not-found))
     ([source query not-found]
      (if (every? map? [source query])
-       (->> (for [[dk dv] query
-                  :let [sv (get source dk not-found)]
-                  :when (not= sv ::drop-not-found)]
-              [dk (take-from sv dv not-found)])
-            (into {}))
+       (reduce-kv
+        (fn [acc dk dv]
+          (let [sv (get source dk not-found)]
+            (if (not= sv ::drop-not-found)
+              (assoc acc dk (take-from sv dv not-found))
+              acc)))
+        {}
+        query)
        source)))
 
   (let [source {:a "a"
