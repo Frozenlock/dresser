@@ -2,8 +2,7 @@
   (:require [dresser.base :as db]
             [dresser.extension :as ext]
             [dresser.extensions.durable-refs :as refs]
-            [dresser.protocols :as dp]
-            [dresser.extensions.drawer-registry :as d-reg]))
+            [dresser.protocols :as dp]))
 
 (def rel-drawer :drs_relations)
 
@@ -25,8 +24,7 @@
                          (some #{drawer-id} drawer-ids)
                          true)
                  [doc-id rel] doc-id->rel]
-             [{:drawer-id drawer-id
-               :doc-id    doc-id} rel])))))
+             [(refs/durable drawer-id doc-id) rel])))))
 
 (defn relation
   "Returns the relation data, if it exists."
@@ -127,14 +125,14 @@
 
 (comment
   (require '[dresser.impl.hashmap :as hm])
-  (let [r1 {:drawer-id 1, :doc-id 1}
-        r2 {:drawer-id 2, :doc-id 2}
-        r3 {:drawer-id 3, :doc-id 3}]
+  (let [r1 (refs/durable 1 1)
+        r2 (refs/durable 2 2)
+        r3 (refs/durable 3 3)]
     (db/raw-> (hm/build)
       (upsert-relation! r1 r2 :parent :children)
       (upsert-relation! r1 r3 :friend)
       (upsert-relation! r2 r3 :friend)
       (relations r1 :children)
-      ;(remove-all-relations! r1)
-      ;(is? r1 :friend r2)
+                                        ;(remove-all-relations! r1)
+                                        ;(is? r1 :friend r2)
       )))

@@ -3,8 +3,21 @@
   (:refer-clojure :exclude [ref])
   (:require [dresser.base :as db]
             [dresser.extension :as ext]
-            [dresser.protocols :as dp]
             [dresser.extensions.drawer-registry :as d-reg]))
+
+(defprotocol IDurableRef
+  :extend-via-metadata true
+  (drawer-id [d-ref] "Returns the drawer ID")
+  (doc-id [d-ref] "Returns the document ID"))
+
+(defrecord DurableRef [drawer-id doc-id]
+  IDurableRef
+  (drawer-id [_this] drawer-id)
+  (doc-id [_this] doc-id))
+
+(defn durable
+  [drawer-id doc-id]
+  (->DurableRef drawer-id doc-id))
 
 (defn- ref*
   ([dresser drawer doc-id upsert?]
@@ -13,8 +26,7 @@
        (d-reg/drawer-id drawer upsert?)
        (db/update-result
         (fn [x]
-          (when x {:drawer-id x
-                   :doc-id doc-id}))))
+          (when x (durable x doc-id)))))
 
      dresser)))
 
@@ -33,12 +45,7 @@
 (defn drawer
   "Returns the drawer associated with this ref."
   [dresser ref]
-  (d-reg/drawer-key dresser (:drawer-id ref)))
-
-(defn doc-id
-  "Returns the document ID associated with this ref."
-  [ref]
-  (:doc-id ref))
+  (d-reg/drawer-key dresser (drawer-id ref)))
 
 
 ;; Some convenience functions

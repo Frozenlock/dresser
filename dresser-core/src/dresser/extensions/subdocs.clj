@@ -91,9 +91,8 @@
           {:keys [children parent]} (get doc field)
           _ (when (and children (seq children))
               (let [child-refs (vec (for [[drawer-id docs] children
-                                         [doc-id _] docs]
-                                     {:drawer-id drawer-id
-                                      :doc-id doc-id}))]
+                                          [doc-id _] docs]
+                                      (refs/durable drawer-id doc-id)))]
                 (reduce #(refs/delete! %1 %2) tx child-refs)))]
        (when (some? parent)
          (remove-parent! tx this-ref))))
