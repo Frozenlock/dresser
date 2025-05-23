@@ -46,7 +46,7 @@
   [coll]
   (let [f (fn [x]
             (cond
-              (and (map? x) (not (record? x))) (->FreezableMap x)
+              (map? x) (->FreezableMap x)
               (set? x) (->FreezableSet x)
               :else x))]
     (w/postwalk f coll)))

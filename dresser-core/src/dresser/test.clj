@@ -729,8 +729,69 @@
                                                               db/lt  (str "prefix2" db/lexical-max)}}
                                                  :sort  [[[:id] :asc]]}))))))
 
+(defrecord DresserTestRecord [field1 field2])
+(defrecord NestedRecord [name data])
+(defn test--records
+  [impl-f]
+  (let [value1 {:some {:nested "value"}}
+        value2 {:number 1}
+        record (->DresserTestRecord value1 value2)
+        nested-rec (->NestedRecord "nested" {:x 1 :y 2})
+        record-with-nested (->DresserTestRecord nested-rec value2)
+        dresser (impl-f)]
+    (db/tx-> dresser
+      (testing-> "store and retrieve records"
+        (db/assoc-at! :drawer "id" [:record] record)
+        (is-> (db/get-at :drawer "id" [:record])
+              (= record))
+        (db/add! :drawer {:id "nested" :data record-with-nested})
+        (is-> (db/fetch-by-id :drawer "nested")
+              (fn [result]
+                (and (instance? DresserTestRecord (:data result))
+                     (instance? NestedRecord (:field1 (:data result)))))))
+      (testing-> "records in :where conditions"
+        ;; Test filtering on nested values inside a record
+        (is-> (db/fetch :drawer {:where {:record {:field1 {:some {:nested "wrong value"}}}}})
+              (= '()))
+        (is-> (db/fetch :drawer {:where {:record {:field1 {:some {:nested "value"}}}}})
+              (= (list {:id "id" :record record})))
+        ;; Test that records are compared by value, not by reference
+        (db/add! :drawer2 {:name "test1" :data record})
+        (db/add! :drawer2 {:name "test2" :data {:field1 value1 :field2 value2}}) ; same data as map
+        (is-> (db/fetch :drawer2 {:where {:data record}})
+              (fn [result]
+                (and (= 1 (count result))
+                     (= "test1" (:name (first result)))))))
+      (testing-> ":only converts record to simple map"
+        (is-> (db/get-at :drawer "id" [:record] {:field2 {:number :?}})
+              (= {:field2 value2})))
+      (testing-> "record as key in path"
+        (db/assoc-at! :drawer "id" [record] {:a {:b 1}})
+        (is-> (db/get-at :drawer "id" [record])
+              (= {:a {:b 1}})))
+      (testing-> "record preservation through updates"
+        (db/add! :drawer {:id "update-test" :rec record})
+        (db/update-at! :drawer "update-test" [:rec :field1 :some :nested] (constantly "updated"))
+        (is-> (db/fetch-by-id :drawer "update-test")
+              (fn [result]
+                (and (instance? DresserTestRecord (:rec result))
+                     (= "updated" (get-in result [:rec :field1 :some :nested]))))))
+      (testing-> "records in batch operations"
+        (db/upsert-many! :drawer [{:id "batch1" :rec record}
+                                  {:id "batch2" :rec (->DresserTestRecord value2 value1)}])
+        (is-> (db/fetch :drawer {:where {:id {db/any ["batch1" "batch2"]}}})
+              (fn [results]
+                (every? #(instance? DresserTestRecord (:rec %)) results))))
+      (testing-> "records as map keys"
+        (db/add! :drawer3 {record "value1"})
+        (db/add! :drawer3 {(->DresserTestRecord value1 value2) "value2"}) ; same content as record
+        (is-> (db/fetch :drawer3 {:only {record :?}})
+              (u= [{record "value1"} {record "value2"}])
+              "Records with same content are treated as equal keys")))))
+
 (defn test-impl
   [impl-f]
+  (test--records impl-f)
   (test--lazyness impl-f)
   (test--types impl-f)
   ;; (test--dont-blow-up-stack impl-f)

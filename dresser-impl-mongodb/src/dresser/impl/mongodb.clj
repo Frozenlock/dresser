@@ -165,10 +165,31 @@
   [coll]
   (let [f (fn [x]
             (cond
-              (and (map? x) (not (record? x))) (into (sorted-map-by hash-compare) x)
+              (map? x) (into (sorted-map-by hash-compare) x)
               (set? x) (into (sorted-set-by hash-compare) x)
               :else x))]
     (w/postwalk f coll)))
+
+(defn- encode-record
+  [m]
+  (if (record? m)
+    (assoc m "_drs-record" (str/replace (str (type m)) "class " ""))
+    m))
+
+(defn- restore-record
+  "If the map is an encoded record, restores it.
+  If the record namespace is not loaded, returns the normal map."
+  [m]
+  (or (when-let [record-name (get m "_drs-record")]
+        (let [clean-map (dissoc m "_drs-record")
+              last-dot (str/last-index-of record-name ".")
+              namespace (subs record-name 0 last-dot)
+              simple-name (subs record-name (inc last-dot))
+              constructor-name (str namespace "/map->" simple-name)]
+          (if-let [map->record (resolve (symbol constructor-name))]
+            (map->record clean-map)
+            clean-map)))
+      m))
 
 (defn- encode-to-str
   [x]
@@ -178,7 +199,9 @@
                    x
                    (encode x))
     :else (str "_drs:edn:"
-               (escape (pr-str (ordered-commutative-coll x))))))
+               (escape (pr-str (ordered-commutative-coll (encode-record x)))))))
+
+
 (defn- encode
   [x]
   (cond
@@ -186,7 +209,8 @@
                           ;; Mongo doesn't support much besides strings
                           ;; as keys. Serialize if necessary.
                           (assoc acc (encode-to-str k) (encode v)))
-                        {} x)
+                        {}
+                        (encode-record x))
     (and (coll? x)
          (not (db/ops? x))) (encode-coll x)
     (keyword? x) (str "_drs:kw:" (escape (qualified-ident-name x)))
@@ -195,13 +219,14 @@
 (defn- decode
   [x]
   (cond
-    (map? x) (reduce-kv (fn [acc k v]
-                          (assoc acc (decode k) (decode v)))
-                        {} x)
+    (map? x) (-> (reduce-kv (fn [acc k v]
+                              (assoc acc (decode k) (decode v)))
+                            {} x)
+                 (restore-record))
     (coll? x) (decode-coll x)
     (string? x) (if-let [[a _drs xtype data] (re-matches #"^(_drs:)(.*?):(.*)" x)]
                   (case xtype
-                    "edn" (edn/read-string (unescape data))
+                    "edn" (-> (unescape data) edn/read-string restore-record)
                     "kw" (keyword (unescape data)))
                   (unescape x))
     (instance? org.bson.types.Binary x) (.getData x)

@@ -1,5 +1,7 @@
 (ns dresser.impl.codax
-  (:require [codax.core :as c]
+  (:require [clojure.string :as str]
+            [clojure.walk :as walk]
+            [codax.core :as c]
             [dresser.base :as db]
             [dresser.impl.hashmap :as hm]
             [dresser.impl.optional :as opt]
@@ -12,6 +14,39 @@ pathwise/side-effect
 ;;; There are 2 different transaction types that need to be handled in
 ;;; this ns: the dresser transaction (tx) and the codax transaction
 ;;; (codax).
+
+;; Record encoding/decoding - similar to MongoDB implementation
+(defn- encode-record
+  [m]
+  (if (record? m)
+    (-> (into {} m)
+        (assoc  "_drs-record" (str/replace (str (type m)) "class " "")))
+    m))
+
+(defn- encode-records
+  "Walk the data structure and encode all records"
+  [data]
+  (walk/postwalk encode-record data))
+
+(defn- restore-record
+  "If the map is an encoded record, restores it.
+  If the record namespace is not loaded, returns the normal map."
+  [m]
+  (or (when-let [record-name (and (map? m) (get m "_drs-record"))]
+        (let [clean-map (dissoc m "_drs-record")
+              last-dot (str/last-index-of record-name ".")
+              namespace (subs record-name 0 last-dot)
+              simple-name (subs record-name (inc last-dot))
+              constructor-name (str namespace "/map->" simple-name)]
+          (if-let [map->record (resolve (symbol constructor-name))]
+            (map->record clean-map)
+            clean-map)))
+      m))
+
+(defn- decode-records
+  "Walk the data structure and decode all records"
+  [data]
+  (walk/postwalk restore-record data))
 
 
 ;; Listing all keys requires loading everything if we don't keep our
@@ -74,7 +109,7 @@ pathwise/side-effect
                      (fn [tx doc]
                        (-> (update tx :codax c/dissoc-at [drawer (:id doc)])
                                      (db/update-result update :deleted-count inc)))
-                     {:where where
+                     {:where (encode-records where)
                       :only  {:id :?}})))
 
 (dp/defimpl -drop
@@ -131,7 +166,7 @@ pathwise/side-effect
       data)))
 
 
-(defn- fetch*
+(defn- fetch* ;; EVERY ARGUMENT SHOULD ALREADY BE ENCODED
   [codax drawer only limit where sort-config]
   (or
    ;; db/any branches might fetch multiple times the same docs.
@@ -179,11 +214,14 @@ pathwise/side-effect
   [tx drawer only limit where sort-config skip]
   (if (nil? (get where :id :not-found))
     (db/with-result tx '())
-    (let [other-where (dissoc where :id)
+    (let [where (encode-records where)
+          only (encode-records only)
+          other-where (dissoc where :id)
           sort-only-id? (and (= :id (first (ffirst sort-config)))
                              (= 1 (count sort-config)))
           all-docs (fetch* (:codax tx) drawer only limit where sort-config)]
       (->> (hm/fetch-from-docs all-docs only limit other-where (if sort-only-id? nil sort-config) skip)
+           (map decode-records)
            (doall)
            (db/with-result tx)))))
 
@@ -195,11 +233,14 @@ pathwise/side-effect
 
 (dp/defimpl -fetch-by-id
   [tx drawer id only where]
-  (let [codax (:codax tx)]
+  (let [codax (:codax tx)
+        where (encode-records where)
+        only (encode-records only)]
     (db/with-result tx
-      (some-> (c/get-at codax [drawer id])
-              (hm/where? where)
-              (hm/take-from only)))))
+      (when-let [doc (c/get-at codax [drawer id])]
+        (when (hm/where? doc where)
+          (let [filtered (hm/take-from doc only)]
+            (decode-records filtered)))))))
 
 (dp/defimpl -temp-data
   [dresser]
@@ -210,7 +251,8 @@ pathwise/side-effect
   [tx drawer data]
   (let [drawer-key drawer
         codax (:codax tx)
-        codax (c/assoc-at codax [drawer-key (:id data)] data)
+        encoded-data (encode-records data)
+        codax (c/assoc-at codax [drawer-key (:id encoded-data)] encoded-data)
         drawer-registered? (c/get-at codax [codax-drawers drawer-key])
         codax (if-not drawer-registered?
                (c/assoc-at codax [codax-drawers drawer-key] true)
