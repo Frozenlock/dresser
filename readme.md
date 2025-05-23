@@ -23,19 +23,37 @@ Suggestions welcome!
 
 ## Why Use It?
 
-Functions to fetch and update (`fetch`, `assoc-at!`, `get-at`, ...) that are guaranteed to work with every implementation.
-
-- Store *and query* nested maps without normalization.
-- Swap implementations without code modification.
-- Easy tests and debug with in-memory dressers.
-
-
-No "buy-in" required for consumers. No deref, no manual opening of transactions.
-Dressers functions are usable directly without any ceremony:
+Store and query your Clojure data structures directly - no ORMs, no normalization, no SQL:
 
 ```clojure
-(user-monthly-usage DB "user123") ;=> {:widgets 50, :bandwidth 100}
+;; Your data - even with records!
+(defrecord Settings [theme language notifications])
+
+(def user {:name "Alice"
+           :settings (->Settings "dark" "en" {:email true :push false})
+           :usage {:widgets 50
+                   :bandwidth 100}})
+
+;; Just store it - returns the ID
+(def user-id (db/add! DB :users user))
+
+;; Query nested fields directly - records are preserved!
+(db/fetch DB :users {:where {:settings {:theme "dark"}}})
+;=> ({:name "Alice" :settings #Settings{...} ...})
+
+;; Update deeply nested values in a transaction
+(db/tx-> DB
+  (db/update-at! :users user-id [:usage :widgets] + 10)
+  (db/update-at! :users user-id [:usage :bandwidth] + 25)
+  (db/get-at :users user-id [:usage]))
+;=> {:widgets 60, :bandwidth 125}
 ```
+
+**Plus:**
+- Develop with in-memory storage, deploy with persistent implementations - zero code changes
+- Test at full speed without database setup or mocks
+- Use vectors `[user-id timestamp]`, maps `{:year 2024 :month 3}`, even records as keys
+- Every function works identically across all implementations
 
 
 ## Usage
