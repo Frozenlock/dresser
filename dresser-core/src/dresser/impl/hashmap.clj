@@ -78,15 +78,16 @@
 
 (defn- lax-compare
   "Similar to compare, but will also return a value for items of different types.
-  For different types, offers no guarantee of consistency between JVM starts."
+  For different types, uses class name comparison for consistent ordering."
   [x y]
-  (let [c1 (class x)
-        c2 (class y)]
-    (if (= c1 c2)
-      (compare x y)
-      (compare
-       (pr-str (.hashCode c1) x)
-       (pr-str (.hashCode c2) y)))))
+  (cond
+    (nil? x) (if (nil? y) 0 -1)
+    (nil? y) 1
+    :else
+    (let [c1 (class x) c2 (class y)]
+      (if (= c1 c2)
+        (compare x y)
+        (compare (str c1) (str c2))))))
 
 ;; Ops
 (defn- lt
@@ -216,15 +217,77 @@
        (take-or-all limit)
        (map (fn [doc] (take-from doc only)))))
 
+(defn- fetch-optimized*
+  "Optimized fetch for sorted maps, following codax fetch* pattern"
+  [drawer-map only limit where sort-config skip]
+  (or
+   ;; Handle top-level ::db/any queries
+   (when-let [top-any (::db/any where)]
+     (when (every? #(contains? % :id) top-any)
+       (distinct (mapcat #(fetch-optimized* drawer-map only limit % sort-config skip) top-any))))
+
+   ;; Handle ID-level ::db/any queries
+   (when-let [id-val (:id where)]
+     (when-let [id-any (when (map? id-val) (::db/any id-val))]
+       (mapcat #(fetch-optimized* drawer-map only limit (assoc where :id %) sort-config skip) id-any)))
+
+   ;; Normal case - use range optimization when possible
+   (let [sort-only-id? (and (= :id (first (ffirst sort-config)))
+                            (= 1 (count sort-config)))
+         ;; Identify if there's an :id query with range operators
+         id-queries (when-let [id-q (:id where)]
+                      (when (and (map? id-q)
+                                 (some #{::db/gte ::db/gt ::db/lte ::db/lt} (keys id-q)))
+                        id-q))
+         other-where (dissoc where :id)]
+
+     (if (and (sorted? drawer-map) id-queries (nil? sort-config))
+       ;; Use efficient range query for ID queries on sorted maps
+       (let [start-key (or (::db/gte id-queries) (::db/gt id-queries))
+             end-key (or (::db/lte id-queries) (::db/lt id-queries))
+             start-inclusive? (contains? id-queries ::db/gte)
+             end-inclusive? (contains? id-queries ::db/lte)
+             ;; Get the appropriate range from the sorted map
+             range-seq (cond
+                        (and start-key end-key)
+                        (if start-inclusive?
+                          (if end-inclusive?
+                            (subseq drawer-map >= start-key <= end-key)
+                            (subseq drawer-map >= start-key < end-key))
+                          (if end-inclusive?
+                            (subseq drawer-map > start-key <= end-key)
+                            (subseq drawer-map > start-key < end-key)))
+
+                        start-key
+                        (if start-inclusive?
+                          (subseq drawer-map >= start-key)
+                          (subseq drawer-map > start-key))
+
+                        end-key
+                        (if end-inclusive?
+                          (subseq drawer-map <= end-key)
+                          (subseq drawer-map < end-key))
+
+                        :else
+                        drawer-map)
+             ;; Extract values and apply remaining filtering
+             docs (map second range-seq)]
+         (fetch-from-docs docs only limit other-where sort-config skip))
+
+       ;; Fall back to regular fetch
+       (fetch-from-docs (vals drawer-map) only limit where sort-config skip)))))
+
 (dp/defimpl -fetch
   [tx drawer only limit where sort-config skip]
   (db/with-result tx
-    (-> (vals (get-in tx [:db drawer]))
-        (fetch-from-docs only limit where sort-config skip))))
+    (let [drawer-map (get-in tx [:db drawer])]
+      (fetch-optimized* drawer-map only limit where sort-config skip))))
 
 (dp/defimpl -upsert
   [tx drawer data]
-  (-> (assoc-in tx [:db drawer (:id data)] data)
+  (-> (update-in tx [:db drawer]
+                 (fn [drawer-map]
+                   (assoc (or drawer-map (sorted-map-by lax-compare)) (:id data) data)))
       (db/with-result data)))
 
 (dp/defimpl -transact
@@ -272,12 +335,15 @@
 
 (dp/defimpl -assoc-at
   [tx drawer id ks data]
-  (-> (update-in tx [:db drawer id]
-                 (fn [doc]
-                   (-> (if (seq ks)
-                         (assoc-in doc ks data)
-                         data)
-                       (assoc :id id))))
+  (-> (update-in tx [:db drawer]
+                 (fn [drawer-map]
+                   (let [drawer-map (or drawer-map (sorted-map-by lax-compare))
+                         doc (get drawer-map id)
+                         new-doc (-> (if (seq ks)
+                                       (assoc-in doc ks data)
+                                       data)
+                                     (assoc :id id))]
+                     (assoc drawer-map id new-doc))))
       (db/with-result data)))
 
 (dp/defimpl -fetch-by-id
@@ -296,7 +362,11 @@
 (defn- base-impl-build
   {:test #(dt/test-impl (fn [] (dt/no-tx-reuse (base-impl-build {}))))}
   [m]
-  (-> (db/make-dresser {:db (into (sorted-map) m)} true)
+  (-> (db/make-dresser {:db (reduce-kv
+                             (fn [acc drawer-name drawer-map]
+                               (assoc acc drawer-name (into (sorted-map-by lax-compare) drawer-map)))
+                             (sorted-map-by lax-compare);{}
+                             m)} true)
       (vary-meta
        merge
        opt/optional-impl
