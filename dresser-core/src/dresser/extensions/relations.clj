@@ -52,31 +52,38 @@
                            (ref-vec ref2)))
        (str/join separator)))
 
-(defn relations
-  "Returns all the relations of a given name.
-  Optional drawer-ids can be passed to select only relations for documents in those drawers."
+(defn fetch-relations
   ([dresser ref1 rel-name]
-   (relations dresser ref1 rel-name nil))
-  ([dresser ref1 rel-name drawer-ids]
-   ;; Use range query on lexically encoded IDs to find all relations
-   (let [[drawer-id doc-id] (ref-vec ref1)
-         prefix (str (encode drawer-id) separator (encode doc-id) separator (encode rel-name) separator)
-         upper-bound (str prefix db/lexical-max)]
+   (fetch-relations dresser ref1 rel-name nil))
+  ([dresser ref1 rel-name query]
+   ;; Optimize query by using the 'index' ID if possible
+   (let [;; Prefix is the encoded ref1 and the relation name.
+         [drawer-id doc-id] (ref-vec ref1)
+         prefix (str (encode drawer-id) separator
+                     (encode doc-id) separator
+                     (encode rel-name) separator)
+
+         ;; suffix is potentially some target ID
+         d-id-query (get-in query [:where :target-ref :drawer-id])
+         d-ids (or (when (map? d-id-query)
+                     (or (get d-id-query db/any)
+                         (when-not (db/ops? (keys d-id-query))
+                           d-id-query)))
+                   d-id-query)
+         id-query {:id (if (seq? d-ids)
+                         {db/any
+                          (vec (for [d-id d-ids
+                                    :let [prefix (str prefix (encode d-id))]]
+                                {db/gte prefix
+                                 ;; upper-bound
+                                 db/lt  (str prefix db/lexical-max)}))}
+
+                         {db/gte prefix
+                          db/lt  (str prefix db/lexical-max)})}]
      (db/tx-let [tx dresser]
-         [query {:where {:id (if (seq drawer-ids)
-                               {db/any (for [d-id drawer-ids
-                                             :let [d-prefix (str prefix (encode d-id))]]
-                                         {db/gte d-prefix
-                                          db/lt  (str d-prefix db/lexical-max)})}
-                               {db/gte prefix
-                                db/lt  upper-bound})}}
+         [query (update query :where merge id-query)
           rels (db/fetch tx rel-drawer query)]
-       (into {}
-             (for [rel rels
-                   :let [id-parts (str/split (:id rel) (re-pattern separator))
-                         ref2-drawer-id (decode (nth id-parts 3))
-                         ref2-doc-id (decode (nth id-parts 4))]]
-               [(refs/durable ref2-drawer-id ref2-doc-id) (:data rel {})]))))))
+       rels))))
 
 (defn relation
   "Returns the user data part of a relation, if it exists."
@@ -106,9 +113,11 @@
   ([dresser ref1 ref2 rname1->2 rname2->1 data1->2 data2->1]
    (let [id1->2 (rel-id ref1 rname1->2 ref2)
          id2->1 (rel-id ref2 rname2->1 ref1)
-         d1->2 (cond-> {:_inv-rel rname2->1}
+         d1->2 (cond-> {:_inv-rel rname2->1
+                        :target-ref ref2}
                        data1->2 (assoc :data data1->2))
-         d2->1 (cond-> {:_inv-rel rname1->2}
+         d2->1 (cond-> {:_inv-rel rname1->2
+                        :target-ref ref1}
                        data2->1 (assoc :data data2->1))]
      ;; Use assoc-at instead of upsert because it's simpler with RBAC checks.
      (db/tx-> dresser

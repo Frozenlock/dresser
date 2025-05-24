@@ -34,8 +34,13 @@
   ([dresser member-ref drawer]
    (db/tx-let [tx dresser]
        [drawer-ids (when drawer (d-reg/drawer-ids tx drawer))
-        rels (rel/relations tx member-ref member-of-rel drawer-ids)]
-     (keys rels))))
+        rels (rel/fetch-relations dresser member-ref member-of-rel
+                                  {:only  {:target-ref :?}
+                                   :where (when drawer-ids
+                                            {:data
+                                             {:target-ref
+                                              {:drawer-id {db/any drawer-ids}}}})})]
+     (map :target-ref rels))))
 
 
 
@@ -69,13 +74,12 @@
   ([dresser group-ref drawer]
    (db/tx-let [tx dresser]
        [drawer-ids (when drawer (d-reg/drawer-ids tx drawer))
-        d-set (set drawer-ids)
-        rels (rel/relations tx group-ref has-member-rel)
-        refs (keys rels)]
-     (if (not-empty d-set)
-       ;; Filter by drawer if specified
-       (filter #(some d-set (:drawer-id %)) refs))
-     refs)))
+        where (when (seq drawer-ids)
+                {:target-ref {:drawer-id {db/any drawer-ids}}})
+        rels (rel/fetch-relations tx group-ref has-member-rel
+                                  {:where where
+                                   :only  {:target-ref :?}})]
+     (map :target-ref rels))))
 
 (defn remove-member-from-group!
   "Removes the member from a group.
@@ -97,14 +101,14 @@
 
   'roles' can be a map of roles or a collection of those keys."
   [dresser grp-ref roles]
-  (let [role-keys (keys (roles-map roles))]
+  (let [roles-query {db/any
+                     (for [r (keys (roles-map roles))]
+                       {r {db/exists? true}})}]
     (db/tx-let [tx dresser]
-        [members->data (rel/relations tx grp-ref has-member-rel)]
-      (for [[member-ref rel-data] members->data
-            :when (some-> rel-data
-                          (select-keys role-keys)
-                          not-empty)]
-        member-ref))))
+        [rels (rel/fetch-relations tx grp-ref has-member-rel
+                                   {:where {:data roles-query}
+                                    :only  {:target-ref :?}})]
+      (map :target-ref rels))))
 
 (defn leave-all-groups!
   "Removes member from all of its groups."

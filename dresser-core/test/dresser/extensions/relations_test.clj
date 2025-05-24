@@ -215,34 +215,49 @@
         (rel/upsert-relation! bob charlie :colleague)
 
         ;; Test querying all friends of alice (should include both people and company)
-        (dt/is-> (rel/relations alice :friend) (= {bob {} charlie {} company1 {}}))
+        (dt/is-> (rel/fetch-relations alice :friend)
+                 (fn [rels] (= (into {} (map #(vector (:target-ref %) (get % :data {})) rels))
+                               {bob {} charlie {} company1 {}})))
 
         ;; Test querying mentor relations (should find diana)
-        (dt/is-> (rel/relations alice :mentor) (= {diana {:subject "clojure"}}))
+        (dt/is-> (rel/fetch-relations alice :mentor)
+                 (fn [rels] (= (into {} (map #(vector (:target-ref %) (get % :data {})) rels))
+                               {diana {:subject "clojure"}})))
 
         ;; Test querying employee relations (should find company1)
-        (dt/is-> (rel/relations alice :employee) (= {company1 {:role "developer"}}))
+        (dt/is-> (rel/fetch-relations alice :employee)
+                 (fn [rels] (= (into {} (map #(vector (:target-ref %) (get % :data {})) rels))
+                               {company1 {:role "developer"}})))
 
         ;; Test querying consultant relations (should find company2)
-        (dt/is-> (rel/relations alice :consultant) (= {company2 {:hourly-rate 100}}))
+        (dt/is-> (rel/fetch-relations alice :consultant)
+                 (fn [rels] (= (into {} (map #(vector (:target-ref %) (get % :data {})) rels))
+                               {company2 {:hourly-rate 100}})))
 
         ;; Test querying non-existent relation type
-        (dt/is-> (rel/relations alice :enemy)
+        (dt/is-> (rel/fetch-relations alice :enemy)
                  empty?)
 
         ;; Test querying relations for someone with no relations in that direction
-        (dt/is-> (rel/relations diana :friend)
+        (dt/is-> (rel/fetch-relations diana :friend)
                  empty?)
 
         ;; Test drawer filtering - only get :friend relations to people (not companies)
-        (dt/is-> (rel/relations alice :friend [people-drawer-id]) (= {bob {} charlie {}}))
+        (dt/is-> (rel/fetch-relations alice :friend {:where {:target-ref {:drawer-id people-drawer-id}}})
+                 (fn [rels] (= (into {} (map #(vector (:target-ref %) (get % :data {})) rels))
+                               {bob {} charlie {}})))
 
         ;; Test drawer filtering - only get :friend relations to companies (not people)
-        (dt/is-> (rel/relations alice :friend [company-drawer-id]) (= {company1 {}}))
+        (dt/is-> (rel/fetch-relations alice :friend {:where {:target-ref {:drawer-id company-drawer-id}}})
+                 (fn [rels] (= (into {} (map #(vector (:target-ref %) (get % :data {})) rels))
+                               {company1 {}})))
 
         ;; Test multiple drawer filtering - get :friend relations from both drawers
-        (dt/is-> (rel/relations alice :friend [people-drawer-id company-drawer-id])
-                 (= {bob {} charlie {} company1 {}}))
+        (dt/is-> (rel/fetch-relations alice :friend {:where {:target-ref {:drawer-id {db/any [people-drawer-id company-drawer-id]}}}})
+                 (fn [rels] (= (into {} (map #(vector (:target-ref %) (get % :data {})) rels))
+                               {bob {} charlie {} company1 {}})))
 
         ;; Verify reverse direction works (diana should see alice as student)
-        (dt/is-> (rel/relations diana :student) (= {alice {}})))))
+        (dt/is-> (rel/fetch-relations diana :student)
+                 (fn [rels] (= (into {} (map #(vector (:target-ref %) (get % :data {})) rels))
+                               {alice {}}))))))
