@@ -100,7 +100,7 @@
       (is? r1 :parent r2) => true"
   [dresser ref1 rel-name ref2]
   (let [id (rel-id ref1 rel-name ref2)]
-    (-> (db/fetch-by-id dresser rel-drawer id {:only {:_inv-rel :?}})
+    (-> (db/fetch-by-id dresser rel-drawer id {:only {:inv-rel :?}})
         (db/update-result some?))))
 
 (defn upsert-relation!
@@ -113,10 +113,10 @@
   ([dresser ref1 ref2 rname1->2 rname2->1 data1->2 data2->1]
    (let [id1->2 (rel-id ref1 rname1->2 ref2)
          id2->1 (rel-id ref2 rname2->1 ref1)
-         d1->2 (cond-> {:_inv-rel rname2->1
+         d1->2 (cond-> {:inv-rel rname2->1
                         :target-ref ref2}
                        data1->2 (assoc :data data1->2))
-         d2->1 (cond-> {:_inv-rel rname1->2
+         d2->1 (cond-> {:inv-rel rname1->2
                         :target-ref ref1}
                        data2->1 (assoc :data data2->1))]
      ;; Use assoc-at instead of upsert because it's simpler with RBAC checks.
@@ -140,7 +140,7 @@
                                  (assoc current :data updated-data)
                                  (dissoc current :data))))))]
     (db/tx-let [tx dresser]
-        [relation-exists? (db/fetch-by-id tx rel-drawer id1->2 {:only {:_inv-rel :?}})]
+        [relation-exists? (db/fetch-by-id tx rel-drawer id1->2 {:only {:inv-rel :?}})]
       (if relation-exists?
         ;; Fast path: relation exists, just apply updates
         (db/tx-> tx
@@ -160,7 +160,7 @@
   [dresser ref1 rname1->2 ref2]
   (let [id1->2 (rel-id ref1 rname1->2 ref2)]
     (db/tx-let [tx dresser]
-        [rname2->1 (db/get-at tx rel-drawer id1->2 [:_inv-rel])
+        [rname2->1 (db/get-at tx rel-drawer id1->2 [:inv-rel])
          id2->1 (rel-id ref2 rname2->1 ref1)]
       (db/tx-> tx
         (db/delete! rel-drawer id1->2)
@@ -176,10 +176,10 @@
     (db/tx-let [tx dresser]
         [rels (db/fetch tx rel-drawer {:where {:id {db/gte prefix
                                                     db/lt  upper-bound}}
-                                       :only  [:_inv-rel :id]})]
+                                       :only  [:inv-rel :id]})]
       ;; For each relation, also delete its inverse
       (reduce (fn [tx rel]
-                (let [inverse-rel-name (:_inv-rel rel)
+                (let [inverse-rel-name (:inv-rel rel)
                       ;; Parse the ID to extract ref2 and rel-name
                       id-parts (str/split (:id rel) (re-pattern separator))
                       ref2-drawer-id (decode (nth id-parts 3))
