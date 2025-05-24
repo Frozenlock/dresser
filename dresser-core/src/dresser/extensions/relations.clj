@@ -65,21 +65,25 @@
 
          ;; suffix is potentially some target ID
          d-id-query (get-in query [:where :target-ref :drawer-id])
-         d-ids (or (when (map? d-id-query)
-                     (or (get d-id-query db/any)
-                         (when-not (db/ops? (keys d-id-query))
-                           d-id-query)))
-                   d-id-query)
-         id-query {:id (if (seq? d-ids)
-                         {db/any
-                          (vec (for [d-id d-ids
-                                    :let [prefix (str prefix (encode d-id))]]
-                                {db/gte prefix
-                                 ;; upper-bound
-                                 db/lt  (str prefix db/lexical-max)}))}
+         d-ids (when d-id-query
+                 (or (if (map? d-id-query)
+                       (or (get d-id-query db/any)
+                           (when-not (db/ops? (keys d-id-query))
+                             [d-id-query]))
+                       [d-id-query])))
+         id-query {:id (if (coll? d-ids)
+                         (let [q (vec (for [d-id d-ids
+                                            :let [prefix (str prefix (encode d-id))]]
+                                        {db/gte prefix
+                                         ;; upper-bound
+                                         db/lt  (str prefix db/lexical-max)}))]
+                           (if (rest q)
+                             {db/any q}
+                             q))
 
                          {db/gte prefix
                           db/lt  (str prefix db/lexical-max)})}]
+     ;; TODO: remove target-ref from :where ? What if user provides a :doc-id?
      (db/tx-let [tx dresser]
          [query (update query :where merge id-query)
           rels (db/fetch tx rel-drawer query)]
