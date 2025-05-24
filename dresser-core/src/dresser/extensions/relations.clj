@@ -1,5 +1,6 @@
 (ns dresser.extensions.relations
-  (:require [dresser.base :as db]
+  (:require [clojure.string :as str]
+            [dresser.base :as db]
             [dresser.extension :as ext]
             [dresser.extensions.durable-refs :as refs]
             [dresser.protocols :as dp]))
@@ -10,29 +11,80 @@
   [{:keys [drawer-id doc-id]}]
   [drawer-id doc-id])
 
+(defn- string->bytes-int
+  "Convert string to bytes then to big integer"
+  [s]
+  (let [bytes (.getBytes s "UTF-8")]
+    (if (empty? bytes)
+      0N
+      (bigint (BigInteger. 1 bytes)))))
+
+(defn- encode [x]
+  (-> (pr-str x)
+      (string->bytes-int)
+      (db/lexical-encode)))
+
+(defn- bytes-int->string
+  "Convert big integer back to string via bytes"
+  [n]
+  (if (zero? n)
+    ""
+    (let [big-int (BigInteger. (str n))
+          bytes (.toByteArray big-int)
+          ;; Remove leading zero byte if present (from sign bit)
+          bytes (if (and (> (count bytes) 1) (zero? (first bytes)))
+                  (byte-array (rest bytes))
+                  bytes)]
+      (String. bytes "UTF-8"))))
+
+(defn decode [encoded]
+  (-> encoded
+      (db/lexical-decode)
+      (bytes-int->string)
+      (read-string)))
+
+(def separator "-")
+
+(defn rel-id
+  [ref1 rel-name ref2]
+  (->> (map encode (concat (ref-vec ref1)
+                           [rel-name]
+                           (ref-vec ref2)))
+       (str/join separator)))
+
 (defn relations
   "Returns all the relations of a given name.
   Optional drawer-ids can be passed to select only relations for documents in those drawers."
   ([dresser ref1 rel-name]
    (relations dresser ref1 rel-name nil))
   ([dresser ref1 rel-name drawer-ids]
-   (db/tx-let [tx dresser]
-       [rels (db/get-at tx rel-drawer (ref-vec ref1) [:rels rel-name])]
-     (into {}
-           (for [[drawer-id doc-id->rel] rels
-                 :when (if (not-empty drawer-ids)
-                         (some #{drawer-id} drawer-ids)
-                         true)
-                 [doc-id rel] doc-id->rel]
-             [(refs/durable drawer-id doc-id) (:data rel {})])))))
+   ;; Use range query on lexically encoded IDs to find all relations
+   (let [[drawer-id doc-id] (ref-vec ref1)
+         prefix (str (encode drawer-id) separator (encode doc-id) separator (encode rel-name) separator)
+         upper-bound (str prefix db/lexical-max)]
+     (db/tx-let [tx dresser]
+         [query {:where {:id (if (seq drawer-ids)
+                               {db/any (for [d-id drawer-ids
+                                             :let [d-prefix (str prefix (encode d-id))]]
+                                         {db/gte d-prefix
+                                          db/lt  (str d-prefix db/lexical-max)})}
+                               {db/gte prefix
+                                db/lt  upper-bound})}}
+          rels (db/fetch tx rel-drawer query)]
+       (into {}
+             (for [rel rels
+                   :let [id-parts (str/split (:id rel) (re-pattern separator))
+                         ref2-drawer-id (decode (nth id-parts 3))
+                         ref2-doc-id (decode (nth id-parts 4))]]
+               [(refs/durable ref2-drawer-id ref2-doc-id) (:data rel {})]))))))
 
 (defn relation
   "Returns the user data part of a relation, if it exists."
   ([dresser ref1 rel-name ref2]
    (relation dresser ref1 rel-name ref2 nil))
   ([dresser ref1 rel-name ref2 only]
-   (let [path (into [:rels rel-name] (ref-vec ref2))]
-     (-> (db/get-at dresser rel-drawer (ref-vec ref1) path)
+   (let [id (rel-id ref1 rel-name ref2)]
+     (-> (db/fetch-by-id dresser rel-drawer id {:only only})
          (db/update-result #(:data % {}))))))
 
 (defn is?
@@ -40,8 +92,8 @@
   Ex: r1 is a parent of r2
       (is? r1 :parent r2) => true"
   [dresser ref1 rel-name ref2]
-  (let [path (into [:rels rel-name] (ref-vec ref2))]
-    (-> (db/get-at dresser rel-drawer (ref-vec ref1) (conj path :_inv-rel))
+  (let [id (rel-id ref1 rel-name ref2)]
+    (-> (db/fetch-by-id dresser rel-drawer id {:only {:_inv-rel :?}})
         (db/update-result some?))))
 
 (defn upsert-relation!
@@ -52,21 +104,24 @@
   ([dresser ref1 ref2 rname1->2 rname2->1]
    (upsert-relation! dresser ref1 ref2 rname1->2 rname2->1 nil nil))
   ([dresser ref1 ref2 rname1->2 rname2->1 data1->2 data2->1]
-   (let [p1->2 (into [:rels rname1->2] (ref-vec ref2))
-         p2->1 (into [:rels rname2->1] (ref-vec ref1))
-         d1->2 (merge {:_inv-rel rname2->1} (when data1->2 {:data data1->2}))
-         d2->1 (merge {:_inv-rel rname1->2} (when data2->1 {:data data2->1}))]
+   (let [id1->2 (rel-id ref1 rname1->2 ref2)
+         id2->1 (rel-id ref2 rname2->1 ref1)
+         d1->2 (cond-> {:_inv-rel rname2->1}
+                       data1->2 (assoc :data data1->2))
+         d2->1 (cond-> {:_inv-rel rname1->2}
+                       data2->1 (assoc :data data2->1))]
+     ;; Use assoc-at instead of upsert because it's simpler with RBAC checks.
      (db/tx-> dresser
-       (db/assoc-at! rel-drawer (ref-vec ref1) p1->2 d1->2)
-       (db/assoc-at! rel-drawer (ref-vec ref2) p2->1 d2->1)))))
+       (db/assoc-at! rel-drawer id1->2 [] d1->2)
+       (db/assoc-at! rel-drawer id2->1 [] d2->1)))))
 
 (defn update-in-relation!
   "Update relation data using functions, like update-in for maps.
   Ensures bidirectional relations exist. Pass nil for f1->2 or f2->1 if no update needed.
   Optimized: checks if relation exists before creating it."
   [dresser ref1 rname1->2 ref2 rname2->1 f1->2 f2->1]
-  (let [p1->2 (into [:rels rname1->2] (ref-vec ref2))
-        p2->1 (into [:rels rname2->1] (ref-vec ref1))
+  (let [id1->2 (rel-id ref1 rname1->2 ref2)
+        id2->1 (rel-id ref2 rname2->1 ref1)
         make-update-fn (fn [f]
                          (when f
                            (fn [current]
@@ -76,60 +131,57 @@
                                  (assoc current :data updated-data)
                                  (dissoc current :data))))))]
     (db/tx-let [tx dresser]
-        [relation-exists? (db/get-at tx rel-drawer (ref-vec ref1) (conj p1->2 :_inv-rel))]
+        [relation-exists? (db/fetch-by-id tx rel-drawer id1->2 {:only {:_inv-rel :?}})]
       (if relation-exists?
         ;; Fast path: relation exists, just apply updates
         (db/tx-> tx
           (#(if f1->2
-              (db/update-at! % rel-drawer (ref-vec ref1) p1->2 (make-update-fn f1->2))
+              (db/update-at! % rel-drawer id1->2 [] (make-update-fn f1->2))
               %))
           (#(if f2->1
-              (db/update-at! % rel-drawer (ref-vec ref2) p2->1 (make-update-fn f2->1))
+              (db/update-at! % rel-drawer id2->1 [] (make-update-fn f2->1))
               %)))
         ;; Slow path: relation doesn't exist, create it with initial data
         (let [initial-data-1->2 (when f1->2 (f1->2 nil))
               initial-data-2->1 (when f2->1 (f2->1 nil))]
           (upsert-relation! tx ref1 ref2 rname1->2 rname2->1 initial-data-1->2 initial-data-2->1))))))
 
-(defn- clean-dissoc-at!
-  "Dissoc at path. If resulting map is empty, dissoc it from parent map.
-  If document ends up empty, delete it."
-  [dresser drawer id ks & dissoc-ks]
-  (db/tx-let [tx dresser]
-      [ret (apply db/update-at! tx drawer id ks dissoc dissoc-ks)
-       _ (if (empty? ret)
-           (clean-dissoc-at! tx drawer id (butlast ks) (last ks))
-           (if (and (empty? ks)
-                    (empty? (dissoc ret :id)))
-             (db/delete! tx drawer id)))]))
 
 (defn remove-relation!
   [dresser ref1 rname1->2 ref2]
-  (let [id1 (ref-vec ref1)
-        id2 (ref-vec ref2)
-        p1->2 (concat [:rels rname1->2] id2)]
+  (let [id1->2 (rel-id ref1 rname1->2 ref2)]
     (db/tx-let [tx dresser]
-        [rel-data (db/get-at tx rel-drawer id1 p1->2)
-         rname2->1 (:_inv-rel rel-data)]
-      (-> tx
-          (clean-dissoc-at! rel-drawer id1 [:rels rname1->2 (first id2)] (last id2))
-          (clean-dissoc-at! rel-drawer id2 [:rels rname2->1 (first id1)] (last id1))))))
+        [rname2->1 (db/get-at tx rel-drawer id1->2 [:_inv-rel])
+         id2->1 (rel-id ref2 rname2->1 ref1)]
+      (db/tx-> tx
+        (db/delete! rel-drawer id1->2)
+        (db/delete! rel-drawer id2->1)))))
 
 
 (defn remove-all-relations!
   [dresser ref1]
-  (let [id1 (ref-vec ref1)]
+  ;; Find all relations where ref1 is involved by searching for IDs that start with ref1's encoding
+  (let [[drawer-id doc-id] (ref-vec ref1)
+        prefix (str (encode drawer-id) separator (encode doc-id) separator)
+        upper-bound (str prefix db/lexical-max)]
     (db/tx-let [tx dresser]
-        [rels (db/get-at tx rel-drawer id1 [:rels])
-         id->rel (for [[_rel-name entry] rels
-                       [drawer-id doc-id->rel] entry
-                       [doc-id {rel :_inv-rel}] doc-id->rel]
-                   [[drawer-id doc-id] rel])]
-      (-> (reduce (fn [tx [id2 rel]]
-                    (clean-dissoc-at! tx rel-drawer id2 [:rels rel (first id1)] (last id1)))
-                  tx
-                  id->rel)
-          (db/delete! rel-drawer id1)))))
+        [rels (db/fetch tx rel-drawer {:where {:id {db/gte prefix
+                                                    db/lt  upper-bound}}
+                                       :only  [:_inv-rel :id]})]
+      ;; For each relation, also delete its inverse
+      (reduce (fn [tx rel]
+                (let [inverse-rel-name (:_inv-rel rel)
+                      ;; Parse the ID to extract ref2 and rel-name
+                      id-parts (str/split (:id rel) (re-pattern separator))
+                      ref2-drawer-id (decode (nth id-parts 3))
+                      ref2-doc-id (decode (nth id-parts 4))
+                      ref2 (refs/durable ref2-drawer-id ref2-doc-id)
+                      inverse-id (rel-id ref2 inverse-rel-name ref1)]
+                  (db/tx-> tx
+                    (db/delete! rel-drawer (:id rel))
+                    (db/delete! rel-drawer inverse-id))))
+              tx
+              rels))))
 
 (defn- wipe!
   [tx drawer where]
@@ -148,12 +200,14 @@
    :wrap-configs
    {`dp/-delete-many {:wrap (fn [delete-method]
                               (fn [tx drawer where]
-                                (-> (wipe! tx drawer where)
-                                    (delete-method drawer where))))}
+                                (cond-> tx
+                                  (not= drawer rel-drawer) (wipe! drawer where)
+                                  true (delete-method drawer where))))}
     `dp/-drop        {:wrap (fn [drop-method]
                               (fn [tx drawer]
-                                (-> (wipe! tx drawer {})
-                                    (drop-method drawer))))}}})
+                                (cond-> tx
+                                  (not= drawer rel-drawer) (wipe! drawer {})
+                                  true (drop-method drawer))))}}})
 
 
 (comment

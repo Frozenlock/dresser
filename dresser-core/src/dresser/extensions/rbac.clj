@@ -1,11 +1,12 @@
 (ns dresser.extensions.rbac
-  (:require [dresser.base :as db]
+  (:require [clojure.string :as str]
+            [dresser.base :as db]
             [dresser.extension :as ext]
+            [dresser.extensions.drawer-registry :as d-reg]
             [dresser.extensions.durable-refs :as refs]
             [dresser.extensions.memberships :as mbr]
-            [dresser.protocols :as dp]
             [dresser.extensions.relations :as rel]
-            [dresser.extensions.drawer-registry :as d-reg]))
+            [dresser.protocols :as dp]))
 
 ;; For maximum compatibility, permissions should always be the same.
 (def allowed-permissions #{:add :delete :read :write})
@@ -198,7 +199,7 @@
                                  {:delete {drawer {id :?}}})
               `dp/-delete-many (fn [drawer _where]
                                  {:delete (assoc-in {} [drawer *doc-id*] :?)})
-              `dp/-upsert      (fn [drawer]
+              `dp/-upsert      (fn [drawer _data]
                                  {:write {drawer :?}})
 
               `dp/-temp-data      -always
@@ -403,10 +404,11 @@
       ;; Relations use the same rights as their target document
       (= drawer rel/rel-drawer)
       (let [[op rel-drawer->x] (first request)
-            [_drawer doc-ref->y] (first rel-drawer->x)
-            [[target-drawer-id doc-id] y] (first doc-ref->y)
+            [_drawer rel-id->y] (first rel-drawer->x)
+            [rel-id y] (first rel-id->y)
+            [target-drawer-id doc-id] (map rel/decode (str/split rel-id (re-pattern rel/separator) 2))
             [tx target-drawer-key] (db/dr (d-reg/drawer-key tx target-drawer-id))
-            new-req {op {target-drawer-key {doc-id {:fake-relations (:rels y)}}}}
+            new-req {op {target-drawer-key {doc-id {:fake-relations y}}}}
             [_old-drawer _old-id & new-args] args]
         (default-check member-ref method-sym method tx [target-drawer-key doc-id new-args] new-req))
 

@@ -195,3 +195,54 @@
         ;; Check Alice's updated info
         (dt/is-> (rel/relation alice :borrows-from bob)
                  (= {:has-insurance? true :emergency-contact "555-1234"})))))
+
+(deftest relations-query
+  (db/tx-let [tx (test-dresser)]
+      [[alice bob charlie diana] (add-docs tx :people 4)
+       [company1 company2] (add-docs tx :companies 2)
+       people-drawer-id (refs/drawer-id alice)
+       company-drawer-id (refs/drawer-id company1)]
+    (-> tx
+        ;; Create multiple relations for alice
+        (rel/upsert-relation! alice bob :friend)
+        (rel/upsert-relation! alice charlie :friend)
+        (rel/upsert-relation! alice company1 :friend) ; Add friend relation to company to test cross-drawer
+        (rel/upsert-relation! alice diana :mentor :student {:subject "clojure"} nil)
+        (rel/upsert-relation! alice company1 :employee :employer {:role "developer"} nil)
+        (rel/upsert-relation! alice company2 :consultant :client {:hourly-rate 100} nil)
+
+        ;; Create some relations for bob too
+        (rel/upsert-relation! bob charlie :colleague)
+
+        ;; Test querying all friends of alice (should include both people and company)
+        (dt/is-> (rel/relations alice :friend) (= {bob {} charlie {} company1 {}}))
+
+        ;; Test querying mentor relations (should find diana)
+        (dt/is-> (rel/relations alice :mentor) (= {diana {:subject "clojure"}}))
+
+        ;; Test querying employee relations (should find company1)
+        (dt/is-> (rel/relations alice :employee) (= {company1 {:role "developer"}}))
+
+        ;; Test querying consultant relations (should find company2)
+        (dt/is-> (rel/relations alice :consultant) (= {company2 {:hourly-rate 100}}))
+
+        ;; Test querying non-existent relation type
+        (dt/is-> (rel/relations alice :enemy)
+                 empty?)
+
+        ;; Test querying relations for someone with no relations in that direction
+        (dt/is-> (rel/relations diana :friend)
+                 empty?)
+
+        ;; Test drawer filtering - only get :friend relations to people (not companies)
+        (dt/is-> (rel/relations alice :friend [people-drawer-id]) (= {bob {} charlie {}}))
+
+        ;; Test drawer filtering - only get :friend relations to companies (not people)
+        (dt/is-> (rel/relations alice :friend [company-drawer-id]) (= {company1 {}}))
+
+        ;; Test multiple drawer filtering - get :friend relations from both drawers
+        (dt/is-> (rel/relations alice :friend [people-drawer-id company-drawer-id])
+                 (= {bob {} charlie {} company1 {}}))
+
+        ;; Verify reverse direction works (diana should see alice as student)
+        (dt/is-> (rel/relations diana :student) (= {alice {}})))))
