@@ -20,7 +20,7 @@
 
 (defn- add-group-to-member! ; Used only within this namespace
   [dresser member-ref grp-ref roles]
-  (rel/upsert-relation! dresser grp-ref member-ref member-of-rel has-member-rel roles nil))
+  (rel/upsert-relation! dresser grp-ref member-ref has-member-rel member-of-rel roles nil))
 
 (defn- remove-group-from-member! ; Used only within this namespace
   [dresser member-ref grp-ref]
