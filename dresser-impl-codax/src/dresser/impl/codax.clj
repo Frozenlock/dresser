@@ -35,7 +35,8 @@ pathwise/side-effect
   (or (when-let [record-name (and (map? m) (get m "_drs-record"))]
         (let [clean-map (dissoc m "_drs-record")
               last-dot (str/last-index-of record-name ".")
-              namespace (subs record-name 0 last-dot)
+              namespace (-> (subs record-name 0 last-dot)
+                            (str/replace "_" "-"))
               simple-name (subs record-name (inc last-dot))
               constructor-name (str namespace "/map->" simple-name)]
           (if-let [map->record (resolve (symbol constructor-name))]
