@@ -83,9 +83,14 @@
 
                          {db/gte prefix
                           db/lt  (str prefix db/lexical-max)})}]
-     ;; TODO: remove target-ref from :where ? What if user provides a :doc-id?
      (db/tx-let [tx dresser]
-         [query (update query :where merge id-query)
+         [query (update query :where
+                        (fn [w]
+                          (-> (or (when (and d-id-query
+                                             (not (next (keys (:target-ref w)))))
+                                    (dissoc w :target-ref))
+                                  w)
+                              (merge id-query))))
           rels (db/fetch tx rel-drawer query)]
        rels))))
 
