@@ -131,7 +131,7 @@
     (-> (if (nil? inst)
           (refs/dissoc-at! tx doc-ref [] ttl-field)
           (-> tx
-              (db/upsert! ttl-drawer {:id new-ttl-id :target doc-ref})
+              (db/assoc-at! ttl-drawer new-ttl-id [] {:target doc-ref})
               (refs/assoc-at! doc-ref [ttl-field] new-ttl-id)))
         (db/with-result doc-ref))))
 
@@ -162,7 +162,7 @@ doesn't have any."
   (db/tx-let [tx dresser]
       [new-ttl-id (ttl-id tx (now ttl-ms))
        doc-ref (refs/add! tx drawer (assoc data ttl-field new-ttl-id))
-       _ (db/upsert! tx ttl-drawer {:id new-ttl-id :target doc-ref})]
+       _ (db/assoc-at! tx ttl-drawer new-ttl-id [] {:target doc-ref})]
     doc-ref))
 
 

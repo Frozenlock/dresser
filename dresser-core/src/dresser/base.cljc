@@ -253,7 +253,14 @@
 
 (wrap-dresser-tx-methods)
 
-
+;; Custom wrapper for assoc-at! to add ID validation
+(defn assoc-at!
+  {:doc (str (:doc (meta #'dp/-assoc-at)) tx-note)}
+  [dresser drawer id ks data]
+  (when (nil? id)
+    (throw (ex-info "Missing document ID" {:drawer drawer :id id :ks ks :data data})))
+  (tx-> dresser
+    (dp/-assoc-at drawer id ks data)))
 
 ;; Need to wrap those in a function because protocols don't support varargs
 
@@ -329,12 +336,9 @@
     (with-result id)))
 
 (defn upsert!
-  {:doc (str (:doc (meta #'dp/-upsert)) tx-note)}
+  "Inserts the document document in the drawer. Must have :id."
   [dresser drawer data]
-  (when-not (:id data)
-    (throw (ex-info "Missing document ID" {:doc data})))
-  (tx-> dresser
-    (dp/-upsert drawer data)))
+  (assoc-at! dresser drawer (:id data) [] data))
 
 (defn upsert-many!
   {:doc (str (:doc (meta #'dp/-upsert-many)) tx-note)}

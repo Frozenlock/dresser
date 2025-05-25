@@ -17,17 +17,14 @@
 ;; we don't escape the character.
 ;; https://stackoverflow.com/questions/12397118/mongodb-dot-in-key-name
 
+(def escape-map {"~" "~~" "." "~p" "$" "~d"})
+(def unescape-map (set/map-invert escape-map))
+
 (defn escape [s]
-  (str/replace s #"[~.$]"
-               { "~" "~~"
-                "."  "~p"
-                "$"  "~d"}))
+  (str/replace s #"[~.$]" escape-map))
 
 (defn unescape [s]
-  (str/replace s #"~~|~p|~d"
-               { "~~" "~"
-                 "~p" "."
-                 "~d" "$"}))
+  (str/replace s #"~~|~p|~d" unescape-map))
 
 (defn- qualified-ident-name
   "Returns the qualified name when possible, otherwise just the name."
@@ -313,7 +310,7 @@
                                              {:projection {:coll     1
                                                            :expired? 1
                                                            "_id"     0}
-                                              :sort       {"_id" -1}; most recent first
+                                              :sort       {"_id" -1} ; most recent first
                                               :session    session})]
     (if (or (not coll) expired?)
       (let [coll-name (if expired?
@@ -548,26 +545,35 @@
                             {:session session})]
     (db/with-result tx {:deleted-count (.getDeletedCount ret)})))
 
-(defn upsert
-  [{:keys [db session *cache] :as dresser} drawer data]
-  (let [encoded (-> (encode-id data)
-                    (id->mid)
-                    (encode))]
-    (->> (mc/find-one-and-replace db
-                                  (drawer->coll [db session *cache] drawer :upsert)
-                                  (select-keys encoded ["_id"])
-                                  encoded
-                                  {:keywordize? false
-                                   :return-new? true
-                                   :session     session
-                                   :upsert?     true})
-         (mid->id)
-         (decode)
-         (db/with-result dresser))))
+(defn assoc-at
+  [{:keys [db session *cache] :as dresser} drawer id ks data]
+  (let [doc (-> (encode-id {:id id})
+                (id->mid))
+        encoded (let [r (encode (if (and (empty? ks)
+                                         (map? data))
+                                  (dissoc data :id)
+                                  data))]
+                  (if (seq? r)
+                    (not-empty r)
+                    r))
+        opts {:keywordize? false
+              :return-new? false
+              :session     session
+              :upsert?     true}
+        collection (drawer->coll [db session *cache] drawer :upsert)]
+    (if (seq ks)
+      (mc/find-one-and-update db
+                              collection
+                              doc
+                              {:$set {(str/join "." (map encode-to-str ks))
+                                      encoded}}
+                              opts)
+      (mc/find-one-and-replace db collection doc encoded opts))
+    (db/with-result dresser data)))
 
-(dp/defimpl -upsert
-  [{:keys [db session] :as dresser} drawer data]
-  (upsert dresser drawer data))
+(dp/defimpl -assoc-at
+  [{:keys [db session] :as dresser} drawer id ks data]
+  (assoc-at dresser drawer id ks data))
 
 (defn upsert-many
   [{:keys [db session *cache] :as dresser} drawer docs]
@@ -637,7 +643,7 @@
     -rename-drawer
     -temp-data
     -transact
-    -upsert
+    -assoc-at
     -upsert-many
     -with-temp-data]))
 

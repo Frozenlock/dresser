@@ -246,13 +246,18 @@ pathwise/side-effect
   [dresser]
   (get dresser :data))
 
-
-(dp/defimpl -upsert
-  [tx drawer data]
+(dp/defimpl -assoc-at
+  [tx drawer id ks data]
   (let [drawer-key drawer
         codax (:codax tx)
-        encoded-data (encode-records data)
-        codax (c/assoc-at codax [drawer-key (:id encoded-data)] encoded-data)
+        ?path (some-> ks seq encode-records)
+        ;; At root? Ensure we have an ID
+        prepared-data (encode-records (if ?path data (assoc data :id id)))
+        codax (c/assoc-at codax (into [drawer-key id] ?path) prepared-data)
+        ;; Might be creating a new document, ensure we have an ID
+        codax (if (not (c/get-at codax [drawer-key id :id]))
+                (c/assoc-at codax [drawer-key id :id] id)
+                codax)
         drawer-registered? (c/get-at codax [codax-drawers drawer-key])
         codax (if-not drawer-registered?
                (c/assoc-at codax [codax-drawers drawer-key] true)
@@ -275,7 +280,7 @@ pathwise/side-effect
     -fetch-by-id
     -temp-data
     -transact
-    -upsert
+    -assoc-at
     -with-temp-data]))
 
 (defn build

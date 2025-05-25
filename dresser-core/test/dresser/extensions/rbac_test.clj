@@ -360,7 +360,7 @@
                      "Trying to write to 'itself' when doesn't exist should fail.")))
 
         (let [[dresser new-user] (db/dr (db/raw-> (test-dresser) (refs/ref! :users (:id user-data))))]
-          (db/tx-> (-> (db/raw-> dresser (db/upsert! :users user-data))
+          (db/tx-> (-> (db/raw-> dresser (db/assoc-at! :users (:id user-data) [] user-data))
                        (rbac/enforce-rbac new-user {}))
             (refs/assoc-at! new-user [:a] "some value")
             (dt/is-> (refs/fetch-by-ref new-user) (= (assoc user-data :a "some value")))))))))

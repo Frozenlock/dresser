@@ -64,7 +64,6 @@
        d-ref (ref! tx drawer id)]
     (db/with-result tx d-ref)))
 
-
 ;; (defn- wrap-base-fn
 ;;   [f]
 ;;   (fn [dresser ref & args]

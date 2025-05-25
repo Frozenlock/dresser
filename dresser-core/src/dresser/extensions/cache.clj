@@ -118,15 +118,6 @@
       (-> (db/update-temp-data tx assoc cache-key cache-db)
           (db/with-result value)))))
 
-(defn cache-upsert
-  [cache-key upsert-method]
-  (fn [tx drawer data]
-    (-> (upsert-method tx drawer data)
-        (db/update-temp-data update
-                             cache-key
-                             #(db/raw-> %
-                                (set-cache-at! drawer (:id data) [] data))))))
-
 (defn cache-assoc-at
   [cache-key assoc-at-method]
   (fn [tx drawer id ks data]
@@ -139,10 +130,9 @@
 
 (ext/defext cache
   [cache-dresser]
-  (let [cache-key (gensym "cache-")]
+  (let [cache-key (keyword (gensym "cache-"))]
     {:deps         []
      :init-fn      (fn [dresser]
                      (db/update-temp-data dresser assoc cache-key cache-dresser))
      :wrap-configs {`dp/-get-at {:wrap (partial cache-get-at cache-key)}
-                    `dp/-assoc-at {:wrap (partial cache-assoc-at cache-key)}
-                    `dp/-upsert {:wrap (partial cache-upsert cache-key)}}}))
+                    `dp/-assoc-at {:wrap (partial cache-assoc-at cache-key)}}}))

@@ -10,7 +10,7 @@
 (dp/defimpl -add
   [tx drawer data]
   (let [[tx document-id] (db/dr (db/gen-id! tx drawer))]
-    (-> (db/upsert! tx drawer (assoc data :id document-id))
+    (-> (db/assoc-at! tx drawer document-id [] data)
         (db/with-result document-id))))
 
 (dp/defimpl -all-ids
@@ -26,15 +26,6 @@
     (-> (db/assoc-at! tx drawer id ks new-data)
         (db/with-result new-data))))
 
-(dp/defimpl -assoc-at
-  [tx drawer id ks data]
-  (let [[tx doc] (db/dr (db/fetch-by-id tx drawer id))
-        new-doc (-> (if (seq ks)
-                      (assoc-in doc ks data)
-                      data)
-                    (assoc :id id))]
-    (-> (db/upsert! tx drawer new-doc)
-        (db/with-result data))))
 
 (dp/defimpl -dissoc-at
   [tx drawer id ks dissoc-ks]
@@ -68,7 +59,7 @@
 (dp/defimpl -upsert-many
   [tx drawer docs]
   (-> (reduce (fn [tx data]
-                (db/upsert! tx drawer data))
+                (db/assoc-at! tx drawer (:id data) [] data))
               tx docs)
       (db/with-result docs)))
 
@@ -120,7 +111,6 @@
   (dp/mapify-impls
    [-add
     -all-ids
-    -assoc-at
     -dissoc-at
     -dresser-id
     -drawer-key

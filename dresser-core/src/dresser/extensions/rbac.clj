@@ -199,8 +199,6 @@
                                  {:delete {drawer {id :?}}})
               `dp/-delete-many (fn [drawer _where]
                                  {:delete (assoc-in {} [drawer *doc-id*] :?)})
-              `dp/-upsert      (fn [drawer _data]
-                                 {:write {drawer :?}})
 
               `dp/-temp-data      -always
               `dp/-with-temp-data -always

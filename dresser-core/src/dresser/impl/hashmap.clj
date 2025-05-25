@@ -283,12 +283,6 @@
     (let [drawer-map (get-in tx [:db drawer])]
       (fetch-optimized* drawer-map only limit where sort-config skip))))
 
-(dp/defimpl -upsert
-  [tx drawer data]
-  (-> (update-in tx [:db drawer]
-                 (fn [drawer-map]
-                   (assoc (or drawer-map (sorted-map-by lax-compare)) (:id data) data)))
-      (db/with-result data)))
 
 (dp/defimpl -transact
   [dresser f {:keys [result?]}]
@@ -322,17 +316,6 @@
   [tx]
   (db/with-result tx (keys (:db tx))))
 
-(def hashmap-base-impl
-  (dp/mapify-impls
-   [-all-drawers
-    -delete-many
-    ;-delete
-    -fetch
-    -temp-data
-    -transact
-    -upsert
-    -with-temp-data]))
-
 (dp/defimpl -assoc-at
   [tx drawer id ks data]
   (-> (update-in tx [:db drawer]
@@ -346,6 +329,17 @@
                      (assoc drawer-map id new-doc))))
       (db/with-result data)))
 
+(def hashmap-base-impl
+  (dp/mapify-impls
+   [-all-drawers
+    -delete-many
+    ;-delete
+    -fetch
+    -temp-data
+    -transact
+    -assoc-at
+    -with-temp-data]))
+
 (dp/defimpl -fetch-by-id
   [tx drawer id only where]
   (db/with-result tx
@@ -354,8 +348,7 @@
             (take-from only))))
 
 (def hashmap-adv-impl
-  (dp/mapify-impls [-assoc-at
-                    -fetch-by-id]))
+  (dp/mapify-impls [-fetch-by-id]))
 
 
 ;; This is used to test the optional implementations

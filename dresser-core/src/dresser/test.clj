@@ -179,35 +179,31 @@
 (defn u= "unordered-equal"
   [x y] (= (set x) (set y)))
 
-
-(defn test--upsert-&-fetch
+;; TODO: merge the 2 'assoc-at' tests?
+(defn test--assoc-at-&-fetch
   [impl-f]
-  (testing "Upsert & Fetch"
+  (testing "Assoc-at & Fetch"
     (let [impl (impl-f)]
-      ;; Throws if ID is missing
+      ;; Throws if ID is nil
       (is (thrown-with-msg?
            clojure.lang.ExceptionInfo
            #"Missing document ID"
-           (db/upsert! impl :drawer1 {:a 1})))
-      (is (thrown-with-msg?
-           clojure.lang.ExceptionInfo
-           #"Missing document ID"
-           (db/upsert! impl :drawer1 {:a 1, :id nil})))
+           (db/assoc-at! impl :drawer1 nil [] {:a 1})))
 
       (let [test-doc {:id         :id1,
                       :a          [{:b "string"
                                     :c :keyword}]
                       [:vec :key] 12}]
         (db/tx-> impl
-          (is-> (db/upsert! :drawer1 test-doc) (= test-doc)
+          (is-> (db/assoc-at! :drawer1 :id1 [] test-doc) (= test-doc)
                 "Expected return")
           (is-> (db/fetch-by-id :drawer1 :id1) (= test-doc)
-                "Document correctly upserted")
-          (is-> (db/upsert! :drawer1 {:id :id1, :a 2}) (= {:id :id1, :a 2})
+                "Document correctly added via assoc-at")
+          (is-> (db/assoc-at! :drawer1 :id1 [] {:a 2}) (= {:a 2})
                 "Document overwritten")))
       (is (= {:id :some-id}
              (db/tx-> (impl-f)
-               (db/upsert! :drawer1 {:id :some-id})
+               (db/assoc-at! :drawer1 :some-id [] {})
                (db/fetch-by-id :drawer1 :some-id)))))
 
     (testing "Maps as keys"
@@ -449,15 +445,15 @@
   (testing "Transact"
     (let [doc {:id :some-id}]
       ;; Test that we get the expected value OUTSIDE the transaction
-      (is (= doc (db/transact! (impl-f) #(db/upsert! % :drawer1 doc))))
+      (is (= doc (db/transact! (impl-f) #(db/assoc-at! % :drawer1 :some-id [] doc))))
       ;; ... Except when we ask to not extract the result
-      (is (db/dresser? (db/transact! (impl-f) #(db/upsert! % :drawer1 doc) {:result? false}))))
+      (is (db/dresser? (db/transact! (impl-f) #(db/assoc-at! % :drawer1 :some-id [] doc) {:result? false}))))
 
     (testing "Rollback on exception"
       ;; Exceptions thrown inside a transaction should cause a rollack
       (let [doc {:id "some-id", :str "string"}
             dresser (db/transact! (impl-f)
-                                  (fn [dresser] (db/upsert! dresser :drawer1 doc))
+                                  (fn [dresser] (db/assoc-at! dresser :drawer1 "some-id" [] doc))
                                   {:result? false})] ; <-- return the dresser object
 
         ; Now make a few changes inside a transaction
@@ -587,7 +583,7 @@
         (is-> (db/fetch-by-id :drawer1 1) nil?)
         (is-> (db/fetch-by-id :drawer1 2) nil?)
         (is-> (db/fetch-by-id :drawer1 3) some?)
-        (is-> (db/upsert! :drawer1 doc1) some?)))))
+        (is-> (db/assoc-at! :drawer1 1 [] doc1) some?)))))
 
 (defn test--delete-many
   [impl-f]
@@ -606,7 +602,7 @@
         (is-> (db/fetch-by-id :drawer1 3) some?)
         (is-> (db/delete-many! :drawer1 {:id 3}) (= {:deleted-count 1}))
         (is-> (db/fetch-by-id :drawer1 3) nil?)
-        (is-> (db/upsert! :drawer1 doc1) some?)))))
+        (is-> (db/assoc-at! :drawer1 1 [] doc1) some?)))))
 
 (defn test--all-drawers
   [impl-f]
@@ -641,8 +637,8 @@
   [impl-f]
   (testing "Rename drawer"
     (db/tx-> (impl-f)
-      (db/upsert! :d1 {:id 1, :name "Bob"})
-      (db/upsert! :d2 {:id 1, :name "John"})
+      (db/assoc-at! :d1 1 [] {:name "Bob"})
+      (db/assoc-at! :d2 1 [] {:name "John"})
       (db/rename-drawer! :d1 :d1')
       (is-> (db/has-drawer? :d1) false?
             "Drawer was renamed and should no longer exists")
@@ -701,7 +697,7 @@
    (testing "Transactions don't blow up the stack"
      (let [add-doc! (fn [dresser idx]
                       (db/with-tx [tx dresser]
-                        (db/upsert! tx :drawer1 {:id idx})))]
+                        (db/assoc-at! tx :drawer1 idx [] {})))]
        (db/with-tx [tx (impl-f)]
          (reduce (fn [tx' idx]
                    (add-doc! tx' idx))
@@ -798,7 +794,7 @@
   (test--immutable-temp-data impl-f)
   (test--rename-drawer impl-f)
   (test--dresser? impl-f)
-  (test--upsert-&-fetch impl-f)
+  (test--assoc-at-&-fetch impl-f)
   (test--transact impl-f)
   (test--upsert-many impl-f)
   (test--fetch impl-f)

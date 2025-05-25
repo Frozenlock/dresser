@@ -42,9 +42,10 @@
       upsert? (let [[tx drawer-num] (db/dr (drawer-count! tx))
                     [tx dresser-id] (db/dr (db/dresser-id tx))
                     new-id (str dresser-id "_" (db/lexical-encode drawer-num))]
-                (-> (db/upsert! tx key->ids {:id drawer, :d-ids [new-id]})
-                    (db/upsert! registry {:id new-id, :key drawer})
-                    (db/with-result new-id)))
+                (db/tx-> tx
+                  (db/assoc-at! key->ids drawer [] {:d-ids [new-id]})
+                  (db/assoc-at! registry new-id [] {:key drawer})
+                  (db/with-result new-id)))
       :else (db/with-result tx nil))))
 
 (defn drawer-ids

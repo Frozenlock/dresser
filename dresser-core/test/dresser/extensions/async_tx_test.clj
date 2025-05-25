@@ -295,7 +295,7 @@
     (let [dresser (atx/async-tx (hm/build))
           test-data {:id "doc-id" :value "test-value"}]
       (db/with-tx [tx dresser]
-        (let [tx1 (db/upsert! tx :drawer1 test-data)
+        (let [tx1 (db/assoc-at! tx :drawer1 "doc-id" [] test-data)
               tx2 (db/fetch-by-id tx :drawer1 "doc-id")
               _ (is (db/dresser? tx2))
               tx3 (atx/start-tx! tx2 {:client-id :client-a})
@@ -308,7 +308,7 @@
       ;; Exceptions thrown inside a transaction should cause a rollack
       (let [doc {:id "some-id", :str "string"}
             dresser (db/raw-> (atx/async-tx (atx/async-tx (mutable-dresser)))
-                      (db/upsert! :drawer1 doc))] ; <-- return the dresser object
+                      (db/assoc-at! :drawer1 "some-id" [] doc))] ; <-- return the dresser object
 
         (atx/start-tx! dresser)
 
