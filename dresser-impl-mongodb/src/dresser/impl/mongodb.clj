@@ -393,7 +393,7 @@
   ; MongoDB doesn't support returning the list of collections in a
   ; multi-docs transactions.  Fetch the list as a separate tx and
   ; update the results as needed.
-  (let [all-collections (map decode (get-all-collections db))
+  (let [all-collections (get-all-collections db)
         coll->drawer-info (->> (for [{:keys [drawer coll expired?]}
                                      (mc/find db drawers-registry {}
                                               {:projection {:_id      0,
