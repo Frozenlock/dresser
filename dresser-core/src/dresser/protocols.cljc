@@ -30,6 +30,7 @@
                 "Delete all documents matching `where`. Returns {:deleted-count <qty>}")
   (-assoc-at ^:tx ^:w [dresser drawer id ks data]
              "Similar to `clojure.core/assoc-in`, but for a drawer. Returns data.")
+  (-drop ^:tx ^:w [dresser drawer] "Removes the drawer. Returns the provided drawer.")
   (-transact [dresser f {:keys [result?] :as opts}]
              "Evaluates the provided function inside a transaction.
   `opts`:
@@ -56,7 +57,6 @@ or they can be constructed using the `DresserFundamental` methods. See
   (-all-ids ^:tx [dresser drawer] "Returns a sequence of all document IDs from this drawer.")
   (-dissoc-at ^:tx ^:w [dresser drawer id ks dissoc-ks]
               "Dissoc the dissoc-keys from the value at located at ks. Returns nil.")
-  (-drop ^:tx ^:w [dresser drawer] "Removes the drawer.")
   (-gen-id ^:tx ^:w [dresser drawer] "Generates an ID for a document in the given drawer.")
   (-get-at ^:tx [dresser drawer id ks only] "Similar to `clojure.core/get-in`, but for a drawer.")
   (-upsert-many ^:tx ^:w [dresser drawer docs]

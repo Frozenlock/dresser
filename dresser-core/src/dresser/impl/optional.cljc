@@ -63,15 +63,6 @@
               tx docs)
       (db/with-result docs)))
 
-(dp/defimpl -drop
-  [tx drawer]
-  (let [[tx all-ids] (db/dr (db/all-ids tx drawer))]
-    (-> (reduce (fn [tx id]
-                  (db/delete! tx drawer id))
-                tx
-                all-ids)
-        (db/with-result drawer))))
-
 (dp/defimpl -has-drawer?
   [tx drawer]
   (db/tx-let [tx tx]
@@ -116,7 +107,6 @@
     -dissoc-at
     -dresser-id
     -drawer-key
-    -drop
     -fetch-by-id
     -fetch-count
     -gen-id

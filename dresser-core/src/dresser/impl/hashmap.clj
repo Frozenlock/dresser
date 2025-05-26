@@ -312,6 +312,11 @@
     (-> (update-in tx [:db drawer] #(apply dissoc % ids))
         (db/with-result {:deleted-count (count ids)}))))
 
+(dp/defimpl -drop
+  [tx drawer]
+  (-> (update tx :db dissoc drawer)
+      (db/with-result drawer)))
+
 (dp/defimpl -all-drawers
   [tx]
   (db/with-result tx (keys (:db tx))))
@@ -329,15 +334,16 @@
                      (assoc drawer-map id new-doc))))
       (db/with-result data)))
 
+
 (def hashmap-base-impl
   (dp/mapify-impls
    [-all-drawers
+    -assoc-at
     -delete-many
-    ;-delete
+    -drop
     -fetch
     -temp-data
     -transact
-    -assoc-at
     -with-temp-data]))
 
 (dp/defimpl -fetch-by-id
