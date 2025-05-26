@@ -1,84 +1,46 @@
 (ns dresser.impl.file
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
-            [clojure.string :as str]
             [clojure.walk :as walk]
             [dresser.base :as db]
+            [dresser.encoding :as enc]
             [dresser.impl.atom :as at]
             [dresser.protocols :as dp]
-            [dresser.test :as dt])
-  (:import (java.util Base64)))
+            [dresser.test :as dt]))
 
 ;; Simple file-based dresser implementation
 ;; Wraps atom implementation and persists to file
 
-;; Encoding/decoding for proper serialization
-
-(defn- encode-record
-  [m]
-  (if (record? m)
-    (-> (into {} m)
-        (assoc "_drs-record" (str/replace (str (type m)) "class " "")))
-    m))
-
-(defn- restore-record
-  "If the map is an encoded record, restores it.
-  If the record namespace is not loaded, returns the normal map."
-  [m]
-  (or (when-let [record-name (and (map? m) (get m "_drs-record"))]
-        (let [clean-map (dissoc m "_drs-record")
-              last-dot (str/last-index-of record-name ".")
-              namespace (-> (subs record-name 0 last-dot)
-                            (str/replace "_" "-"))
-              simple-name (subs record-name (inc last-dot))
-              constructor-name (str namespace "/map->" simple-name)]
-          (if-let [map->record (resolve (symbol constructor-name))]
-            (map->record clean-map)
-            clean-map)))
-      m))
-
-(defn- encode-bytes
-  [x]
-  (cond
-    (bytes? x) {:_drs-bytes (.encodeToString (Base64/getEncoder) x)}
-    :else x))
-
-(defn- restore-bytes
-  [x]
-  (if (and (map? x) (:_drs-bytes x))
-    (.decode (Base64/getDecoder) (:_drs-bytes x))
-    x))
-
-(defn- encode
-  "Encode data for EDN serialization"
+(defn- encode-all
+  "Encode both records and byte arrays in data structure"
   [data]
   (walk/postwalk (fn [x]
                    (-> x
-                       encode-record
-                       encode-bytes))
+                       enc/encode-record
+                       enc/encode-bytes))
                  data))
 
-(defn- decode
-  "Decode data from EDN serialization"
+(defn- decode-all
+  "Decode both records and byte arrays in data structure"
   [data]
   (walk/postwalk (fn [x]
                    (-> x
-                       restore-record
-                       restore-bytes))
+                       enc/restore-record
+                       enc/restore-bytes))
                  data))
 
 (defn- load-from-file
   "Load data from file, return empty map if file doesn't exist or is invalid"
   [filename]
   (if (.exists (io/file filename))
-    (decode (edn/read-string (slurp filename)))
+    (decode-all (edn/read-string (slurp filename)))
     {}))
 
 (defn- save-to-file!
   "Save data to file atomically using a temp file"
   [filename data]
   (let [temp-file (str filename ".tmp")]
-    (spit temp-file (pr-str (encode data)))
+    (spit temp-file (pr-str (encode-all data)))
     (.renameTo (io/file temp-file) (io/file filename))))
 
 (defn- reload!

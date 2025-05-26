@@ -5,6 +5,7 @@
             [clojure.string :as str]
             [clojure.walk :as w]
             [dresser.base :as db]
+            [dresser.encoding :as enc]
             [dresser.impl.optional :as opt]
             [dresser.protocols :as dp]
             [hasch.core :as hashc]
@@ -167,27 +168,6 @@
               :else x))]
     (w/postwalk f coll)))
 
-(defn- encode-record
-  [m]
-  (if (record? m)
-    (assoc m "_drs-record" (str/replace (str (type m)) "class " ""))
-    m))
-
-(defn- restore-record
-  "If the map is an encoded record, restores it.
-  If the record namespace is not loaded, returns the normal map."
-  [m]
-  (or (when-let [record-name (get m "_drs-record")]
-        (let [clean-map (dissoc m "_drs-record")
-              last-dot (str/last-index-of record-name ".")
-              namespace (-> (subs record-name 0 last-dot)
-                            (str/replace "_" "-"))
-              simple-name (subs record-name (inc last-dot))
-              constructor-name (str namespace "/map->" simple-name)]
-          (if-let [map->record (resolve (symbol constructor-name))]
-            (map->record clean-map)
-            clean-map)))
-      m))
 
 (defn- encode-to-str
   [x]
@@ -197,7 +177,7 @@
                    x
                    (encode x))
     :else (str "_drs:edn:"
-               (escape (pr-str (ordered-commutative-coll (encode-record x)))))))
+               (escape (pr-str (ordered-commutative-coll (enc/encode-record x)))))))
 
 
 (defn- encode
@@ -208,7 +188,7 @@
                           ;; as keys. Serialize if necessary.
                           (assoc acc (encode-to-str k) (encode v)))
                         {}
-                        (encode-record x))
+                        (enc/encode-record x))
     (and (coll? x)
          (not (db/ops? x))) (encode-coll x)
     (keyword? x) (str "_drs:kw:" (escape (qualified-ident-name x)))
@@ -220,11 +200,11 @@
     (map? x) (-> (reduce-kv (fn [acc k v]
                               (assoc acc (decode k) (decode v)))
                             {} x)
-                 (restore-record))
+                 (enc/restore-record))
     (coll? x) (decode-coll x)
     (string? x) (if-let [[a _drs xtype data] (re-matches #"^(_drs:)(.*?):(.*)" x)]
                   (case xtype
-                    "edn" (-> (unescape data) edn/read-string restore-record)
+                    "edn" (-> (unescape data) edn/read-string enc/restore-record)
                     "kw" (keyword (unescape data)))
                   (unescape x))
     (instance? org.bson.types.Binary x) (.getData x)

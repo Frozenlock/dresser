@@ -3,6 +3,7 @@
             [clojure.walk :as walk]
             [codax.core :as c]
             [dresser.base :as db]
+            [dresser.encoding :as enc]
             [dresser.impl.hashmap :as hm]
             [dresser.impl.optional :as opt]
             [dresser.impl.pathwise :as pathwise]
@@ -15,39 +16,15 @@ pathwise/side-effect
 ;;; this ns: the dresser transaction (tx) and the codax transaction
 ;;; (codax).
 
-;; Record encoding/decoding - similar to MongoDB implementation
-(defn- encode-record
-  [m]
-  (if (record? m)
-    (-> (into {} m)
-        (assoc  "_drs-record" (str/replace (str (type m)) "class " "")))
-    m))
-
 (defn- encode-records
   "Walk the data structure and encode all records"
   [data]
-  (walk/postwalk encode-record data))
-
-(defn- restore-record
-  "If the map is an encoded record, restores it.
-  If the record namespace is not loaded, returns the normal map."
-  [m]
-  (or (when-let [record-name (and (map? m) (get m "_drs-record"))]
-        (let [clean-map (dissoc m "_drs-record")
-              last-dot (str/last-index-of record-name ".")
-              namespace (-> (subs record-name 0 last-dot)
-                            (str/replace "_" "-"))
-              simple-name (subs record-name (inc last-dot))
-              constructor-name (str namespace "/map->" simple-name)]
-          (if-let [map->record (resolve (symbol constructor-name))]
-            (map->record clean-map)
-            clean-map)))
-      m))
+  (walk/postwalk enc/encode-record data))
 
 (defn- decode-records
   "Walk the data structure and decode all records"
   [data]
-  (walk/postwalk restore-record data))
+  (walk/postwalk enc/restore-record data))
 
 
 ;; Listing all keys requires loading everything if we don't keep our
