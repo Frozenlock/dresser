@@ -507,6 +507,50 @@
     tx))
 
 
+;; LEXICAL ENCODING
+;;
+;; A custom base-61 URL-safe encoding that preserves lexicographical
+;; sort order for arbitrary-sized integers. This is crucial for
+;; dresser's range queries.
+;;
+;; Design principles:
+;; 1. Length-prefixed: Numbers with more digits sort after shorter ones
+;;    (e.g., "99" < "100" in our encoding, unlike strings where "99" > "100")
+;; 2. URL-safe: Uses only alphanumeric characters
+;; 3. Reserved characters:
+;;    - 'z' is reserved as a separator (not used in encoding)
+;;    - '~' is lexical-max (sorts after all encoded values)
+;;
+;; The encoding works by:
+;; 1. Converting number to base-61 string
+;; 2. Prefixing with the encoded length
+;; 3. Prefixing the length itself with separators if needed
+;;
+;; Example: Why length-prefixing matters
+;; Without length prefix:
+;;   99  -> "1c" (2 chars in base-61)
+;;   100 -> "1D" (2 chars in base-61)
+;;   But "1c" > "1D" lexicographically! (wrong order)
+;;
+;; The actual algorithm with length prefix:
+;;   5       -> "1z5"    (length=1, separator, value="5")
+;;   99      -> "2z1c"   (length=2, separator, value="1c")
+;;   100     -> "2z1d"   (length=2, separator, value="1d")
+;;   10000   -> "3z2fv"  (length=3, separator, value="2fv")
+;;   1000000 -> "4z4OjR" (length=4, separator, value="4OjR")
+;;
+;; The 'z' separator is crucial - it sorts after all encoding chars (0-9A-Za-y),
+;; ensuring that longer numbers always sort after shorter ones.
+;;
+;; But wait - what if the length itself needs multiple characters?
+;; Same problem! A length of "13" would sort between "1" and "2".
+;; Solution: prefix the length with 'z' separators to push it forward:
+;;   Length 1-60:     "1z..." to "yz..."        (single char length)
+;;   Length 61-3720:  "z1z..." to "zyz..."      (one z prefix)
+;;   Length 3721+:    "zz1z..." to "zzyz..."    (two z prefixes)
+;;   And so on recursively...
+
+
 (def ^:private lexical-chars
   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
 
