@@ -18,6 +18,8 @@ Most Clojure MongoDB wrappers convert strings to keywords when fetching document
 - Vector
 - List
 - Map
+- Records
+- Byte arrays
 
 ### Complex Keys
 
