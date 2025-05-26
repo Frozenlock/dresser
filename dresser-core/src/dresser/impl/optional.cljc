@@ -52,7 +52,7 @@
 (dp/defimpl -fetch-count
   [tx drawer where]
   (-> tx
-      (db/fetch drawer {:only  [:id]
+      (db/fetch drawer {:only  [::fake-key]
                         :where where})
       (db/update-result count)))
 
@@ -75,8 +75,10 @@
 (dp/defimpl -has-drawer?
   [tx drawer]
   (db/tx-let [tx tx]
-      [cnt (db/fetch-count tx drawer)]
-    (> cnt 0)))
+      [ret (db/fetch tx drawer {:limit 1
+                                :only  [::fake-key]})]
+    true
+    (> (count ret) 0)))
 
 (dp/defimpl -dresser-id
   [tx]
