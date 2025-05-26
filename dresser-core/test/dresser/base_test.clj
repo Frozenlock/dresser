@@ -59,6 +59,28 @@
                                     (db/with-result (* n 2))))))]
         (is (= [2 4 6] result))))))
 
+(deftest reduce-tx-test
+  (let [dresser (hm/build)]
+
+    (testing "Basic reduction functionality"
+      (let [result (-> dresser
+                       (db/with-result 0)
+                       (db/reduce-tx (fn [tx n]
+                                       (db/with-result tx (+ (db/result tx) n)))
+                                     [1 2 3 4 5]))]
+        (is (= 15 result))))
+
+    (testing "Transaction state propagation"
+      (db/tx-let [tx dresser]
+          [drawers (-> tx
+                       (db/add! :drawer1 {:id "doc1"})
+                       (db/add! :drawer2 {:id "doc2"})
+                       (db/all-drawers))
+           _ (is (= drawers [:drawer1 :drawer2]))
+           _ (db/reduce-tx tx db/drop! drawers)
+           drawers (db/all-drawers tx)]
+        (is (empty? drawers))))))
+
 (deftest fetch-reduce-test
   (let [dresser (hm/build)]
 

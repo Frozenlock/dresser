@@ -442,6 +442,37 @@
              tx'
              (recur tx' last-id))))))))
 
+(defn reduce-tx
+  "Reduces a function over elements of a collection within a transaction context.
+  If called with only dresser and f, uses the dresser's result as the collection.
+  The reducing function should take (tx element) and return an updated tx.
+  Returns the final dresser state.
+
+  Arguments:
+    dresser - The dresser object
+    f       - A function that takes (tx element) and returns an updated tx
+    coll    - (Optional) The collection to process (defaults to current result)
+
+  Example:
+    (db/tx-> my-db
+      (db/fetch :users)
+      (db/reduce-tx (fn [tx user]
+                      (db/update! tx :users (:id user) [:last-seen] (java.util.Date.)))))"
+  ([dresser f]
+   (let [ret (result dresser)]
+     (assert (or (nil? ret)
+                 (coll? ret)) "Previous dresser result must be a collection")
+     (reduce-tx dresser f ret)))
+  ([dresser f coll]
+   (if (not-empty coll)
+     (with-tx [tx dresser]
+       (loop [tx tx, items coll]
+         (let [tx' (f tx (first items))]
+           (if-let [more-items (next items)]
+             (recur tx' more-items)
+             tx'))))
+     dresser)))
+
 (defn map-tx
   "Maps a function over elements of a collection within a transaction context.
   If called with only dresser and f, uses the dresser's result as the collection.
@@ -464,13 +495,13 @@
      (map-tx dresser f ret)))
   ([dresser f coll]
    (if (not-empty coll)
-     (with-tx [tx dresser]
-       (loop [tx tx, results '(), items coll]
-         (let [[tx' result] (dr (f tx (first items)))
-               results' (conj results result)]
-           (if-let [more-items (next items)]
-             (recur tx' results' more-items)
-             (with-result tx (reverse results'))))))
+     (let [dresser-with-results (with-result dresser [])]
+       (-> dresser-with-results
+           (reduce-tx (fn [tx item]
+                        (let [acc (result tx)
+                              [tx' item-result] (dr (f tx item))]
+                          (with-result tx' (conj acc item-result))))
+                      coll)))
      dresser)))
 
 
