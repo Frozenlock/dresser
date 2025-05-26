@@ -7,6 +7,19 @@
 
 (def rel-drawer :drs_relations)
 
+;; DESIGN NOTE: Relations are always bidirectional
+;;
+;; While this may seem restrictive, bidirectionality is crucial for performance:
+;; 1. When deleting a document, we can efficiently find ALL its relations
+;;    by querying with the document ID prefix (e.g., "doc123|*")
+;; 2. Without bidirectional relations, document deletion would require scanning
+;;    ALL relations to find ones that reference the deleted document
+;; 3. The "inverse" relation can have minimal/no data if only one direction
+;;    needs information, but it must exist for efficient cleanup
+;;
+;; DO NOT add "unidirectional" relations - the performance cost at deletion
+;; time would be prohibitive.
+
 (defn- ref-vec
   [{:keys [drawer-id doc-id]}]
   [drawer-id doc-id])
