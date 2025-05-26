@@ -45,21 +45,15 @@
 
 (defn- reload!
   "Deletes every document in the dresser, then populates it back using
-data from the file."
+  data from the file."
   [tx filename]
   (db/tx-let [tx tx]
-      [drawers (db/all-drawers tx)
-       ;; delete all docs
-       _ (reduce #(db/delete-many! %1 %2 {:id {db/exists? true}})
-                 tx
-                 drawers)
-       ;; add back read data
+      [_ (-> (db/all-drawers tx)
+             (db/reduce-tx db/drop!))
        data (load-from-file filename)
-       _ (reduce (fn [tx [drawer id->docs]]
-                   (db/upsert-many! tx drawer (vals id->docs)))
-                 tx
-                 data)]
-    tx))
+       load-drawer! (fn [tx [drawer id->docs]]
+                      (db/upsert-many! tx drawer (vals id->docs)))]
+    (db/reduce-tx tx load-drawer! data)))
 
 (defn wrap-transact
   [t filename force-reload?]
