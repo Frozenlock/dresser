@@ -30,11 +30,10 @@
                  data))
 
 (defn- load-from-file
-  "Load data from file, return empty map if file doesn't exist or is invalid"
+  "Load data from file if it exists, nil otherwise"
   [filename]
-  (if (.exists (io/file filename))
-    (decode-all (edn/read-string (slurp filename)))
-    {}))
+  (when (.exists (io/file filename))
+    (decode-all (edn/read-string (slurp filename)))))
 
 (defn- save-to-file!
   "Save data to file atomically using a temp file"
@@ -75,13 +74,17 @@
 
 (defn build
   "Builds a file-backed dresser from a filename.
-  `init-data` has priority over data from file.
+  Data from file has priority over `init-data` (which is only used if file doesn't exist).
   `force-reload?` reloads from file at each transaction (mostly for tests)."
   {:test (fn []
-           (let [temp-file (str (gensym "test") ".edn")]
+           (let [temp-file (str (gensym "test") ".edn")
+                 delete-file! #(when (.exists (io/file temp-file))
+                                 (.delete (io/file temp-file)))]
              (try
                (dt/test-impl
-                #(dt/no-tx-reuse (build temp-file {} :force-reload)))
+                (fn []
+                  (delete-file!)
+                  (dt/no-tx-reuse (build temp-file {} :force-reload))))
                (finally
                  (when (.exists (io/file temp-file))
                    (.delete (io/file temp-file)))))))}
@@ -92,7 +95,7 @@
    (build filename init-data false))
 
   ([filename init-data force-reload?]
-   (let [data (or init-data (load-from-file filename))
+   (let [data (or (load-from-file filename) init-data)
          atom-dresser (at/build data)]
      (vary-meta atom-dresser
                 (fn [m]
