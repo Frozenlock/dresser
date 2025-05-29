@@ -44,11 +44,12 @@
   "Build an IDresser atom from a map or from another IDresser object."
   {:test (fn []
            (dt/test-impl #(dt/no-tx-reuse (build))))}
-  ([] (build {}))
+  ([] (build nil))
   ([map-or-dresser]
    (let [inner-dresser (cond
                          (db/dresser? map-or-dresser) map-or-dresser
-                         (map? map-or-dresser) (hm/build map-or-dresser))]
+                         (map? map-or-dresser) (hm/build map-or-dresser)
+                         :else (hm/build))]
      (-> (with-meta {:*source (atom inner-dresser)
                      :data    (db/temp-data inner-dresser)
                      :lock    (gensym "lock-")}

@@ -84,7 +84,7 @@
                (dt/test-impl
                 (fn []
                   (delete-file!)
-                  (dt/no-tx-reuse (build temp-file {} :force-reload))))
+                  (dt/no-tx-reuse (build temp-file nil :force-reload))))
                (finally
                  (when (.exists (io/file temp-file))
                    (.delete (io/file temp-file)))))))}
