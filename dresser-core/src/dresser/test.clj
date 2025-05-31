@@ -790,8 +790,17 @@
               (u= [{record "value1"} {record "value2"}])
               "Records with same content are treated as equal keys")))))
 
+(defn test--in-tx
+  [impl-f]
+  (let [dresser (impl-f)]
+    (is (not (db/tx? dresser)))
+    (db/with-tx [tx dresser]
+      (is (db/tx? tx))
+      tx)))
+
 (defn test-impl
   [impl-f]
+  (test--in-tx impl-f)
   (test--records impl-f)
   (test--lazyness impl-f)
   (test--types impl-f)
