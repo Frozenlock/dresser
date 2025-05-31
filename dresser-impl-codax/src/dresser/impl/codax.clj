@@ -12,6 +12,9 @@
 
 pathwise/side-effect
 
+;; Load optional protocol implementations
+(opt/load-optional)
+
 ;;; There are 2 different transaction types that need to be handled in
 ;;; this ns: the dresser transaction (tx) and the codax transaction
 ;;; (codax).
@@ -39,48 +42,44 @@ pathwise/side-effect
     x))
 
 
-(dp/defimpl -transact
-  [dresser f {:keys [result?]}]
-  (if (:codax dresser)
-    (f dresser)
-    (let [;; Codax doesn't appear to provide an easy way to extract results
-          ;; from a transaction AND something else. Use a promise to extract
-          ;; the dresser back from inside the codax transaction.
-          *ret (promise)
+(defn do-transact
+  [dresser f opts]
+  (let [;; Codax doesn't appear to provide an easy way to extract results
+        ;; from a transaction AND something else. Use a promise to extract
+        ;; the dresser back from inside the codax transaction.
+        *ret (promise)
 
-          ;; `open-database!` returns the same object for a given path.
-          ;; Closing it would mean breaking all other transactions.
-          db (c/open-database! (:path dresser))
-          transact-fn (fn [codax]
-                        (let [dresser (-> (f (assoc dresser :codax codax))
-                                          (db/update-result not-lazy))]
-                          (deliver *ret dresser)
-                          (:codax dresser)))]
-      ;; TODO: Automatic retries should be optional
-      (try
-        ;; Upgradable-tx upgrades to a write-tx when possible.
-        ;; If not, it throws and we can restart our own transaction.
-        (c/with-upgradable-transaction [db codax :throw-on-upgrade true]
-          (transact-fn codax))
-        (catch clojure.lang.ExceptionInfo e
-          (if (:codax/upgraded-transaction (ex-data e))
-            ;; 'upgrade-restart-required' means we need a write TX.
-            (c/with-write-transaction [db codax]
-              (transact-fn codax))
-            (throw e))))
-      (let [dresser @*ret]
-        (if result?
-          (db/result dresser)
-          (dissoc dresser :codax))))))
+        ;; `open-database!` returns the same object for a given path.
+        ;; Closing it would mean breaking all other transactions.
+        db (c/open-database! (:path dresser))
+        transact-fn (fn [codax]
+                      (let [dresser (-> (f (assoc dresser :codax codax))
+                                        (db/update-result not-lazy))]
+                        (deliver *ret dresser)
+                        (:codax dresser)))]
+    ;; TODO: Automatic retries should be optional
+    (try
+      ;; Upgradable-tx upgrades to a write-tx when possible.
+      ;; If not, it throws and we can restart our own transaction.
+      (c/with-upgradable-transaction [db codax :throw-on-upgrade true]
+        (transact-fn codax))
+      (catch clojure.lang.ExceptionInfo e
+        (if (:codax/upgraded-transaction (ex-data e))
+          ;; 'upgrade-restart-required' means we need a write TX.
+          (c/with-write-transaction [db codax]
+            (transact-fn codax))
+          (throw e))))
+    (let [dresser @*ret]
+      (assoc dresser :codax false))))
 
 
-(dp/defimpl -all-drawers
+(defn do-all-drawers
   [tx]
   ; When reading from a codax, we don't need to return an 'updated' codax.
   (->> (map first (c/seek-at (:codax tx) [codax-drawers]))
        (db/with-result tx)))
 
-(dp/defimpl -delete-many
+(defn do-delete-many
   [tx drawer where]
   (let [tx (db/with-result tx {:deleted-count 0})]
     (db/fetch-reduce tx drawer
@@ -90,7 +89,7 @@ pathwise/side-effect
                      {:where (encode-records where)
                       :only  {:id :?}})))
 
-(dp/defimpl -drop
+(defn do-drop
   [tx drawer]
   (let [codax (:codax tx)
         codax (c/dissoc-at codax [drawer])
@@ -188,7 +187,7 @@ pathwise/side-effect
              :when (not (some #{k} to-remove))]
          data)))))
 
-(dp/defimpl -fetch
+(defn do-fetch
   [tx drawer only limit where sort-config skip]
   (if (nil? (get where :id :not-found))
     (db/with-result tx '())
@@ -209,7 +208,7 @@ pathwise/side-effect
 
 
 
-(dp/defimpl -fetch-by-id
+(defn do-fetch-by-id
   [tx drawer id only where]
   (let [codax (:codax tx)
         where (encode-records where)
@@ -220,11 +219,11 @@ pathwise/side-effect
           (let [filtered (hm/take-from doc only)]
             (decode-records filtered)))))))
 
-(dp/defimpl -temp-data
+(defn get-temp-data
   [dresser]
   (get dresser :data))
 
-(dp/defimpl -assoc-at
+(defn do-assoc-at
   [tx drawer id ks data]
   (let [drawer-key drawer
         codax (:codax tx)
@@ -243,23 +242,53 @@ pathwise/side-effect
     (-> (assoc tx :codax codax)
         (db/with-result data))))
 
-(dp/defimpl -with-temp-data
+(defn set-temp-data
   [dresser data]
   (assoc dresser :data data))
 
 
-(defn codax-impl
-  []
-  (dp/mapify-impls
-   [-all-drawers
-    -delete-many
-    -drop
-    -fetch
-    -fetch-by-id
-    -temp-data
-    -transact
-    -assoc-at
-    -with-temp-data]))
+;; CodaxDresser record implementing all protocols
+(defrecord CodaxDresser [path data codax]
+  dp/IsDresser
+  (-dresser? [this] true)
+
+  dp/DresserFundamental
+  (-fetch [this drawer only limit where sort-config skip]
+    (do-fetch this drawer only limit where sort-config skip))
+
+  (-all-drawers [this]
+    (do-all-drawers this))
+
+  (-delete-many [this drawer where]
+    (do-delete-many this drawer where))
+
+  (-assoc-at [this drawer id ks data]
+    (do-assoc-at this drawer id ks data))
+
+  (-drop [this drawer]
+    (do-drop this drawer))
+
+  (-transact [this f opts]
+    (do-transact this f opts))
+
+  (-temp-data [this]
+    (get-temp-data this))
+
+  (-with-temp-data [this data]
+    (set-temp-data this data))
+
+  (-immutable? [this]
+    false)
+
+  (-tx? [this]
+    (boolean (:codax this)))
+
+  dp/DresserLifecycle
+  (-start [this]
+    this)
+
+  (-stop [this]
+    this))
 
 (defn build
   {:test (fn []
@@ -270,10 +299,9 @@ pathwise/side-effect
                              (dt/no-tx-reuse (build test-path))))
              (destroy!)))}
   [path]
-  (-> (db/make-dresser {:path path} false)
-      (vary-meta merge
-                 opt/optional-impl
-                 (codax-impl))
+  (-> (->CodaxDresser path nil nil)
+      ;; Provide specialized implementation of fetch-by-id for better performance
+      (vary-meta assoc `dp/-fetch-by-id do-fetch-by-id)
       (db/with-temp-dresser-id)))
 
 
