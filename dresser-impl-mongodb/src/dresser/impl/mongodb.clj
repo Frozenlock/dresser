@@ -510,13 +510,6 @@
       (db/with-result drawer)))
 
 
-(defn set-temp-data
-  [dresser data]
-  (assoc dresser :data data))
-
-(defn get-temp-data
-  [dresser]
-  (get dresser :data))
 
 (defn do-delete-many
   [{:keys [db session *cache] :as tx} drawer where]
@@ -632,9 +625,6 @@
                             `dp/assoc-at do-assoc-at
                             `dp/drop do-drop
                             `dp/transact do-transact
-                            `dp/temp-data get-temp-data
-                            `dp/with-temp-data set-temp-data
-                            `dp/immutable? (constantly false)
                             `dp/tx? #(boolean (:transact %))
                             ;; Specialized implementations for better performance
                             `dp/fetch-count do-fetch-count

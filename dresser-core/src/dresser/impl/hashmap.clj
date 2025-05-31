@@ -320,13 +320,6 @@
   (let [tx (f (assoc dresser :transact true))]
     (assoc tx :transact false)))
 
-(defn get-temp-data
-  [dresser]
-  (get dresser :data))
-
-(defn set-temp-data
-  [dresser data]
-  (assoc dresser :data data))
 
 (defn fetch-by-id
   [dresser drawer id only where]
@@ -357,9 +350,6 @@
                             `dp/assoc-at       assoc-at
                             `dp/drop           drop-drawer
                             `dp/transact       do-transact
-                            `dp/temp-data      get-temp-data
-                            `dp/with-temp-data set-temp-data
-                            `dp/immutable?     (constantly true)
                             `dp/tx?            #(boolean (:transact %))
                             ;; Optional optimization
                             `dp/fetch-by-id    fetch-by-id})))]

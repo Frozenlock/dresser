@@ -217,10 +217,6 @@ pathwise/side-effect
           (let [filtered (hm/take-from doc only)]
             (decode-records filtered)))))))
 
-(defn get-temp-data
-  [dresser]
-  (get dresser :data))
-
 (defn do-assoc-at
   [tx drawer id ks data]
   (let [drawer-key drawer
@@ -240,11 +236,6 @@ pathwise/side-effect
     (-> (assoc tx :codax codax)
         (db/with-result data))))
 
-(defn set-temp-data
-  [dresser data]
-  (assoc dresser :data data))
-
-
 ;; Codax implementation methods provided via metadata
 
 (defn build
@@ -256,7 +247,7 @@ pathwise/side-effect
                              (dt/no-tx-reuse (build test-path))))
              (destroy!)))}
   [path]
-  (let [impl (-> {:path path :data nil :codax nil}
+  (let [impl (-> {:path path :codax nil}
                  (with-meta
                    (merge opt/default-implementations
                           {`dp/fetch do-fetch
@@ -265,9 +256,6 @@ pathwise/side-effect
                            `dp/assoc-at do-assoc-at
                            `dp/drop do-drop
                            `dp/transact do-transact
-                           `dp/temp-data get-temp-data
-                           `dp/with-temp-data set-temp-data
-                           `dp/immutable? (constantly false)
                            `dp/tx? #(boolean (:codax %))
                            `dp/start identity
                            `dp/stop identity

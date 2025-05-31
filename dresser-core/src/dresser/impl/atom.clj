@@ -35,13 +35,6 @@
   [dresser]
   (update dresser :*source (fn [*a] (swap! *a dp/-stop) *a)))
 
-(defn get-temp-data
-  [dresser]
-  (get dresser :data))
-
-(defn set-temp-data
-  [dresser data]
-  (assoc dresser :data data))
 
 ;; Atom implementation methods provided via metadata
 
@@ -56,14 +49,10 @@
                          (map? map-or-dresser) (hm/build map-or-dresser)
                          :else (hm/build))
          impl (-> {:*source (atom inner-dresser)
-                   :data (db/temp-data inner-dresser)
                    :lock (gensym "lock-")}
                   (with-meta
                     (merge (meta inner-dresser)
                            {`dp/transact       do-transact
-                            `dp/temp-data      get-temp-data
-                            `dp/with-temp-data set-temp-data
-                            `dp/immutable?     (constantly false)
                             `dp/tx?            #(dp/tx? @(:*source %))
                             `dp/start          do-start
                             `dp/stop           do-stop})))]
