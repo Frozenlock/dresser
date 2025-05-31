@@ -53,6 +53,16 @@
   (-immutable? [dresser])
   (-tx? [dresser]))
 
+;; DresserOptional: Optional methods that can be implemented directly for
+;; improved performance, or they fall back to default implementations using
+;; the `DresserFundamental` methods. See `dresser.impl.optional`.
+;;
+;; IMPORTANT: DresserOptional cannot be partially implemented on
+;; defrecords. Either implement ALL methods or implement NONE and use
+;; metadata to override specific methods. See hashmap.clj for examples
+;; of the metadata approach:
+;; (vary-meta dresser assoc `dp/-method-name my-impl-fn)
+
 (defprotocol DresserOptional
   :extend-via-metadata true
   (-fetch-by-id [tx drawer id only where])
