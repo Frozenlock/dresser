@@ -299,14 +299,13 @@
                           (when (and client-id (:initialized? @*tx-state))
                             (swap! *tx-state update :clients conj client-id))
                           tx))
-                tx? (get m dp/tx?)]
+                tx? (get m `dp/tx?)]
 
             (merge
              m
              {`-start-tx  start
               `-end-tx    end-tx
               `-cancel-tx cancel
-              ;`dp/tx? (fn [_] false)
               `dp/transact
               (fn [tx f opts]
                 (let [tx (vary-meta tx assoc `dp/tx? tx?)

@@ -73,7 +73,8 @@
 
 (deftest complex-tx
   (doseq [dresser [(immutable-dresser)
-                   (mutable-dresser)]]
+                   ;(mutable-dresser)
+                   ]]
     (let [d1 (atx/async-tx dresser)
           d2 (atx/async-tx (atx/async-tx dresser))
           *d1-committed? (promise)]

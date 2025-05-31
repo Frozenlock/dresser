@@ -12,8 +12,6 @@
 
 pathwise/side-effect
 
-;; Load optional protocol implementations
-(opt/load-optional)
 
 ;;; There are 2 different transaction types that need to be handled in
 ;;; this ns: the dresser transaction (tx) and the codax transaction
@@ -247,48 +245,7 @@ pathwise/side-effect
   (assoc dresser :data data))
 
 
-;; CodaxDresser record implementing all protocols
-(defrecord CodaxDresser [path data codax]
-  dp/IsDresser
-  (-dresser? [this] true)
-
-  dp/DresserFundamental
-  (-fetch [this drawer only limit where sort-config skip]
-    (do-fetch this drawer only limit where sort-config skip))
-
-  (-all-drawers [this]
-    (do-all-drawers this))
-
-  (-delete-many [this drawer where]
-    (do-delete-many this drawer where))
-
-  (-assoc-at [this drawer id ks data]
-    (do-assoc-at this drawer id ks data))
-
-  (-drop [this drawer]
-    (do-drop this drawer))
-
-  (-transact [this f opts]
-    (do-transact this f opts))
-
-  (-temp-data [this]
-    (get-temp-data this))
-
-  (-with-temp-data [this data]
-    (set-temp-data this data))
-
-  (-immutable? [this]
-    false)
-
-  (-tx? [this]
-    (boolean (:codax this)))
-
-  dp/DresserLifecycle
-  (-start [this]
-    this)
-
-  (-stop [this]
-    this))
+;; Codax implementation methods provided via metadata
 
 (defn build
   {:test (fn []
@@ -299,10 +256,25 @@ pathwise/side-effect
                              (dt/no-tx-reuse (build test-path))))
              (destroy!)))}
   [path]
-  (-> (->CodaxDresser path nil nil)
-      ;; Provide specialized implementation of fetch-by-id for better performance
-      (vary-meta assoc `dp/-fetch-by-id do-fetch-by-id)
-      (db/with-temp-dresser-id)))
+  (let [impl (-> {:path path :data nil :codax nil}
+                 (with-meta
+                   (merge opt/default-implementations
+                          {`dp/fetch do-fetch
+                           `dp/all-drawers do-all-drawers
+                           `dp/delete-many do-delete-many
+                           `dp/assoc-at do-assoc-at
+                           `dp/drop do-drop
+                           `dp/transact do-transact
+                           `dp/temp-data get-temp-data
+                           `dp/with-temp-data set-temp-data
+                           `dp/immutable? (constantly false)
+                           `dp/tx? #(boolean (:codax %))
+                           `dp/start identity
+                           `dp/stop identity
+                           ;; Specialized implementation for better performance
+                           `dp/fetch-by-id do-fetch-by-id})))]
+    (-> (db/make-dresser impl false)
+        (db/with-temp-dresser-id))))
 
 
 

@@ -97,46 +97,20 @@
        _ (db/drop! tx drawer)]
     (db/with-result tx new-drawer)))
 
-;; Extend DresserOptional with default implementations
-(extend-protocol dp/DresserOptional
-  #?(:clj Object :cljs default)
-  (-fetch-by-id [dresser drawer id only where]
-    (fetch-by-id dresser drawer id only where))
 
-  (-fetch-count [dresser drawer where]
-    (fetch-count dresser drawer where))
+;; Map of default optional implementations for metadata
+(def default-implementations
+  {`dp/fetch-by-id    fetch-by-id
+   `dp/fetch-count    fetch-count
+   `dp/update-at      update-at
+   `dp/add            add
+   `dp/all-ids        all-ids
+   `dp/dissoc-at      dissoc-at
+   `dp/gen-id         gen-id
+   `dp/get-at         get-at
+   `dp/upsert-many    upsert-many
+   `dp/dresser-id     dresser-id
+   `dp/drawer-key     drawer-key
+   `dp/rename-drawer  rename-drawer
+   `dp/has-drawer?    has-drawer?})
 
-  (-update-at [dresser drawer id ks f args]
-    (update-at dresser drawer id ks f args))
-
-  (-add [dresser drawer data]
-    (add dresser drawer data))
-
-  (-all-ids [dresser drawer]
-    (all-ids dresser drawer))
-
-  (-dissoc-at [dresser drawer id ks dissoc-ks]
-    (dissoc-at dresser drawer id ks dissoc-ks))
-
-  (-gen-id [dresser drawer]
-    (gen-id dresser drawer))
-
-  (-get-at [dresser drawer id ks only]
-    (get-at dresser drawer id ks only))
-
-  (-upsert-many [dresser drawer docs]
-    (upsert-many dresser drawer docs))
-
-  (-dresser-id [dresser]
-    (dresser-id dresser))
-
-  (-drawer-key [dresser drawer-id]
-    (drawer-key dresser drawer-id))
-
-  (-rename-drawer [dresser drawer new-drawer]
-    (rename-drawer dresser drawer new-drawer))
-
-  (-has-drawer? [dresser drawer]
-    (has-drawer? dresser drawer)))
-
-(defn load-optional [] true)

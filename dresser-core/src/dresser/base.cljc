@@ -5,16 +5,18 @@
 
 ;; TODO: When ID is nil, should methods be no-op and return nil?
 
-(defrecord Dresser [])
+(defrecord Dresser [in-tx? temp-data immutable?])
 
 (defn dresser?
   "Returns true if x is a dresser."
   [x]
-  (dp/-dresser? x))
+  (= (type x) Dresser))
 
 (defn make-dresser
-  [dresser immutable?]
-  (-> (vary-meta dresser assoc ::immutable? immutable?)))
+  [fundamental-impl immutable?]
+  (-> (->Dresser false {} immutable?)
+      (into fundamental-impl)
+      (with-meta (meta fundamental-impl))))
 
 
 (defn immutable?

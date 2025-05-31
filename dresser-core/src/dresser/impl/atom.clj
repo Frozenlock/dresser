@@ -43,34 +43,7 @@
   [dresser data]
   (assoc dresser :data data))
 
-;; AtomDresser record - minimal implementation.  All transactional
-;; methods are delegated to the inner dresser.
-(defrecord AtomDresser [*source data lock]
-  dp/IsDresser
-  (-dresser? [this] true)
-
-  dp/DresserFundamental
-  (-transact [this f opts]
-    (do-transact this f opts))
-
-  (-temp-data [this]
-    (get-temp-data this))
-
-  (-with-temp-data [this data]
-    (set-temp-data this data))
-
-  (-immutable? [this]
-    false)
-
-  (-tx? [this]
-    (dp/-tx? @(:*source this)))
-
-  dp/DresserLifecycle
-  (-start [this]
-    (do-start this))
-
-  (-stop [this]
-    (do-stop this)))
+;; Atom implementation methods provided via metadata
 
 (defn build
   "Build an IDresser atom from a map or from another IDresser object."
@@ -81,8 +54,18 @@
    (let [inner-dresser (cond
                          (db/dresser? map-or-dresser) map-or-dresser
                          (map? map-or-dresser) (hm/build map-or-dresser)
-                         :else (hm/build))]
-     (-> (->AtomDresser (atom inner-dresser)
-                        (db/temp-data inner-dresser)
-                        (gensym "lock-"))
+                         :else (hm/build))
+         impl (-> {:*source (atom inner-dresser)
+                   :data (db/temp-data inner-dresser)
+                   :lock (gensym "lock-")}
+                  (with-meta
+                    (merge (meta inner-dresser)
+                           {`dp/transact       do-transact
+                            `dp/temp-data      get-temp-data
+                            `dp/with-temp-data set-temp-data
+                            `dp/immutable?     (constantly false)
+                            `dp/tx?            #(dp/tx? @(:*source %))
+                            `dp/start          do-start
+                            `dp/stop           do-stop})))]
+     (-> (db/make-dresser impl false)
          (db/with-temp-dresser-id)))))

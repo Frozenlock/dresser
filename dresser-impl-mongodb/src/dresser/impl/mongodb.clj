@@ -611,52 +611,7 @@
       (dissoc dresser' :transact :post-tx-fns))))
 
 
-;; Load optional protocol implementations for extend-protocol Object
-(opt/load-optional)
-
-;; MongoDBDresser record implementing all protocols
-(defrecord MongoDBDresser [client db db-configs *cache]
-  dp/IsDresser
-  (-dresser? [this] true)
-
-  dp/DresserFundamental
-  (-fetch [this drawer only limit where sort-config skip]
-    (do-fetch this drawer only limit where sort-config skip))
-
-  (-all-drawers [this]
-    (do-all-drawers this))
-
-  (-delete-many [this drawer where]
-    (do-delete-many this drawer where))
-
-  (-assoc-at [this drawer id ks data]
-    (do-assoc-at this drawer id ks data))
-
-  (-drop [this drawer]
-    (do-drop this drawer))
-
-  (-transact [this f opts]
-    (do-transact this f opts))
-
-  (-temp-data [this]
-    (get-temp-data this))
-
-  (-with-temp-data [this data]
-    (set-temp-data this data))
-
-  (-immutable? [this]
-    false)
-
-  (-tx? [this]
-    (boolean (:transact this)))
-
-  dp/DresserLifecycle
-  (-start [this]
-    this)
-
-  (-stop [this]
-    (.close ^java.io.Closeable (:client this))
-    this))
+;; MongoDB implementation methods provided via metadata
 
 
 (defn build
@@ -664,13 +619,28 @@
   ([m {:keys [db-name host port] :as db-configs
        :or   {port 27017, host "127.0.0.1"}}]
    (let [client (mcl/create (str "mongodb://" host ":" port))
-         db (mcl/get-db client db-name)]
-     (-> (->MongoDBDresser client db db-configs (cw/lru-cache-factory {}))
-         ;; Provide specialized implementations for better performance
-         (vary-meta assoc 
-                    `dp/-fetch-count do-fetch-count
-                    `dp/-upsert-many do-upsert-many  
-                    `dp/-rename-drawer do-rename-drawer)
+         db (mcl/get-db client db-name)
+         impl (-> {:client client
+                   :db db
+                   :db-configs db-configs
+                   :*cache (cw/lru-cache-factory {})}
+                  (with-meta
+                    (merge opt/default-implementations
+                           {`dp/fetch do-fetch
+                            `dp/all-drawers do-all-drawers
+                            `dp/delete-many do-delete-many
+                            `dp/assoc-at do-assoc-at
+                            `dp/drop do-drop
+                            `dp/transact do-transact
+                            `dp/temp-data get-temp-data
+                            `dp/with-temp-data set-temp-data
+                            `dp/immutable? (constantly false)
+                            `dp/tx? #(boolean (:transact %))
+                            ;; Specialized implementations for better performance
+                            `dp/fetch-count do-fetch-count
+                            `dp/upsert-many do-upsert-many
+                            `dp/rename-drawer do-rename-drawer})))]
+     (-> (db/make-dresser impl false)
          (db/with-temp-dresser-id)))))
 
 
