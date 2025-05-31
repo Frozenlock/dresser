@@ -362,11 +362,11 @@
   (cw/evict *cache new-drawer)
   (update tx :post-tx-fns conj #(drop-expired-collections! db)))
 
-(dp/defimpl -rename-drawer
+(defn do-rename-drawer
   [{:keys [db session] :as tx} drawer new-drawer]
   (rename-in-registry! tx drawer new-drawer))
 
-(dp/defimpl -all-drawers
+(defn do-all-drawers
   [{:keys [db session] :as tx}]
   ; MongoDB doesn't support returning the list of collections in a
   ; multi-docs transactions.  Fetch the list as a separate tx and
@@ -481,11 +481,11 @@
          (map decode)
          (db/with-result tx))))
 
-(dp/defimpl -fetch
+(defn do-fetch
   [{:keys [db session] :as tx} drawer only limit where sort-config skip]
   (fetch tx drawer only limit where sort-config skip))
 
-(dp/defimpl -fetch-count
+(defn do-fetch-count
   [{:keys [db session *cache] :as dresser} drawer where]
   (->> (mc/count-documents db
                            (drawer->coll [db session *cache] drawer)
@@ -494,7 +494,7 @@
        (db/with-result dresser)))
 
 ;; MongoDB currently doesn't support '.drop()' inside a transaction.
-(dp/defimpl -drop
+(defn do-drop
   [{:keys [db session *cache] :as dresser} drawer]
   ;; Clearing the cache must be first because we are not in a
   ;; transaction.
@@ -510,15 +510,15 @@
       (db/with-result drawer)))
 
 
-(dp/defimpl -with-temp-data
+(defn set-temp-data
   [dresser data]
   (assoc dresser :data data))
 
-(dp/defimpl -temp-data
+(defn get-temp-data
   [dresser]
   (get dresser :data))
 
-(dp/defimpl -delete-many
+(defn do-delete-many
   [{:keys [db session *cache] :as tx} drawer where]
   (let [ret (mc/delete-many db
                             (drawer->coll [db session *cache] drawer)
@@ -552,7 +552,7 @@
       (mc/find-one-and-replace db collection doc encoded opts))
     (db/with-result dresser data)))
 
-(dp/defimpl -assoc-at
+(defn do-assoc-at
   [{:keys [db session] :as dresser} drawer id ks data]
   (assoc-at dresser drawer id ks data))
 
@@ -570,12 +570,12 @@
                  {:session session})
   (db/with-result dresser docs))
 
-(dp/defimpl -upsert-many
+(defn do-upsert-many
   [{:keys [db session *cache] :as dresser} drawer docs]
   (upsert-many dresser drawer docs))
 
 ;; transactionLifetimeLimitSeconds <-- might be useful in the future
-(dp/defimpl -transact
+(defn do-transact
   [dresser f {:keys [result?]}]
   (if (:transact dresser)
     (f dresser)
@@ -608,25 +608,55 @@
       (try (doseq [f (:post-tx-fns dresser')]
              (f))
            (catch Exception _))
-      (if result?
-        (db/result dresser')
-        (dissoc dresser' :transact :post-tx-fns)))))
+      (dissoc dresser' :transact :post-tx-fns))))
 
 
-(defn mongo-impl
-  []
-  (dp/mapify-impls
-   [-all-drawers
-    -delete-many
-    -fetch
-    -drop
-    -fetch-count
-    -rename-drawer
-    -temp-data
-    -transact
-    -assoc-at
-    -upsert-many
-    -with-temp-data]))
+;; Load optional protocol implementations for extend-protocol Object
+(opt/load-optional)
+
+;; MongoDBDresser record implementing all protocols
+(defrecord MongoDBDresser [client db db-configs *cache]
+  dp/IsDresser
+  (-dresser? [this] true)
+
+  dp/DresserFundamental
+  (-fetch [this drawer only limit where sort-config skip]
+    (do-fetch this drawer only limit where sort-config skip))
+
+  (-all-drawers [this]
+    (do-all-drawers this))
+
+  (-delete-many [this drawer where]
+    (do-delete-many this drawer where))
+
+  (-assoc-at [this drawer id ks data]
+    (do-assoc-at this drawer id ks data))
+
+  (-drop [this drawer]
+    (do-drop this drawer))
+
+  (-transact [this f opts]
+    (do-transact this f opts))
+
+  (-temp-data [this]
+    (get-temp-data this))
+
+  (-with-temp-data [this data]
+    (set-temp-data this data))
+
+  (-immutable? [this]
+    false)
+
+  (-tx? [this]
+    (boolean (:transact this)))
+
+  dp/DresserLifecycle
+  (-start [this]
+    this)
+
+  (-stop [this]
+    (.close ^java.io.Closeable (:client this))
+    this))
 
 
 (defn build
@@ -635,14 +665,12 @@
        :or   {port 27017, host "127.0.0.1"}}]
    (let [client (mcl/create (str "mongodb://" host ":" port))
          db (mcl/get-db client db-name)]
-     (-> (db/make-dresser {:client     client
-                           :db         db
-                           :db-configs db-configs
-                           :*cache     (cw/lru-cache-factory {})}
-                          false)
-         (vary-meta merge
-                    opt/optional-impl
-                    (mongo-impl))
+     (-> (->MongoDBDresser client db db-configs (cw/lru-cache-factory {}))
+         ;; Provide specialized implementations for better performance
+         (vary-meta assoc 
+                    `dp/-fetch-count do-fetch-count
+                    `dp/-upsert-many do-upsert-many  
+                    `dp/-rename-drawer do-rename-drawer)
          (db/with-temp-dresser-id)))))
 
 
