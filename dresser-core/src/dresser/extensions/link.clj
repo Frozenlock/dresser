@@ -48,128 +48,174 @@
 
 
 
-(defn- get-src [dresser src-id]
-  (get-in dresser [:srcs src-id :src]))
+;; (defn- get-src [dresser src-id]
+;;   (get-in dresser [:srcs src-id :src]))
 
-(defn- assoc-src [dresser src-id src]
-  (assoc-in dresser [:srcs src-id :src] src))
-
-
-
-;; We need to pass the dresser state up the chain of child transactions.
-;; This can be done by storing the dresser state inside the result of the transaction.
-(defn- nested-transact
-  [dresser f src-keys]
-  (let [src1-key (first src-keys)
-        remaining-keys (rest src-keys)]
-    (db/with-tx [src-tx (get-src dresser src1-key) {:result? false}]
-      (if (empty? remaining-keys)
-        (let [dresser' (f (assoc-src dresser src1-key src-tx))]
-          (db/with-result (get-src dresser' src1-key)
-            {:dresser dresser'}))
-        (let [src2' (nested-transact (assoc-src dresser src1-key src-tx) f remaining-keys)
-              src2-key (first remaining-keys)
-              {:keys [dresser]} (db/result src2')]
-          (db/with-result (get-src dresser src1-key)
-            {:dresser (assoc-src dresser src2-key (db/with-result src2' nil))}))))))
-
-(dp/defimpl -transact
-  [dresser f {:keys [result?]}]
-  (if (:transact dresser)
-    (f dresser)
-    (let [src-keys (keys (:srcs dresser))
-          src1-key (first src-keys)
-          src1' (nested-transact (assoc dresser :transact true) f src-keys)
-          {:keys [dresser]} (db/result src1')
-          return (assoc-src dresser src1-key (db/with-result src1' nil))]
-      (if result?
-        (db/result return)
-        (dissoc return :transact)))))
+;; (defn- assoc-src [dresser src-id src]
+;;   (assoc-in dresser [:srcs src-id :src] src))
 
 
 
+;; ;; We need to pass the dresser state up the chain of child transactions.
+;; ;; This can be done by storing the dresser state inside the result of the transaction.
+;; (defn- nested-transact
+;;   [dresser f src-keys]
+;;   (let [src1-key (first src-keys)
+;;         remaining-keys (rest src-keys)]
+;;     (db/with-tx [src-tx (get-src dresser src1-key) {:result? false}]
+;;       (if (empty? remaining-keys)
+;;         (let [dresser' (f (assoc-src dresser src1-key src-tx))]
+;;           (db/with-result (get-src dresser' src1-key)
+;;             {:dresser dresser'}))
+;;         (let [src2' (nested-transact (assoc-src dresser src1-key src-tx) f remaining-keys)
+;;               src2-key (first remaining-keys)
+;;               {:keys [dresser]} (db/result src2')]
+;;           (db/with-result (get-src dresser src1-key)
+;;             {:dresser (assoc-src dresser src2-key (db/with-result src2' nil))}))))))
 
-
-(defn dispatch
-  "Returns the src-dresser for the target-drawer
-  In order of precedence:
-  1. Matching the drawer tests
-  2. Already exists in a dresser
-  3. Fallback on the first dresser."
-  [dresser target-drawer]
-  (db/tx-let [tx dresser]
-      ;; First try with the registry
-      [src-id (some (fn [[src-id {:keys [dispatch]}]]
-                      (when (some #(if (fn? %)
-                                     (% target-drawer)
-                                     (= % target-drawer)) dispatch)
-                        src-id))
-                    (:srcs dresser))
-       ;; Try to find a dresser that already has the target-drawer.
-       ;; src-id (or src-id
-       ;;            (let [{:keys [src1 src2]} tx
-       ;;                  [src1' src1-has?] (db/dr (db/has-drawer? src1 target-drawer))
-       ;;                  [src2' src2-has?] (if src1-has?
-       ;;                                      [src2 :dont-care]
-       ;;                                      (db/dr (db/has-drawer? src2 target-drawer)))]
-       ;;              (db/with-result (assoc tx :src1 src1 :src2 src2)
-       ;;                (cond
-       ;;                  src1-has? :src1
-       ;;                  src2-has? :src2
-       ;;                  :else nil))))
-       ;; If this fails, just pick the first one in the registry.
-       src-id (or src-id (ffirst (:srcs dresser)))]
-    (db/with-result tx src-id)))
-
-(defn wrapped-add
-  [dresser drawer data]
-  (let [[dresser dispatch-key] (db/dr (dispatch dresser drawer))
-        _ (def bbb dresser)
-        target-dresser (get-src dresser dispatch-key)
-        child-tx (dp/-add target-dresser drawer data)
-        result (db/result child-tx)]
-    (-> (assoc-src dresser dispatch-key child-tx)
-        (db/with-result result))))
+;; (dp/defimpl -transact
+;;   [dresser f {:keys [result?]}]
+;;   (if (:transact dresser)
+;;     (f dresser)
+;;     (let [src-keys (keys (:srcs dresser))
+;;           src1-key (first src-keys)
+;;           src1' (nested-transact (assoc dresser :transact true) f src-keys)
+;;           {:keys [dresser]} (db/result src1')
+;;           return (assoc-src dresser src1-key (db/with-result src1' nil))]
+;;       (if result?
+;;         (db/result return)
+;;         (dissoc return :transact)))))
 
 
 
-(defn append-dresser
-  [link-dresser child-dresser dispatch-test]
-  (let [counter (inc (:counter link-dresser 0))]
-    (-> (assoc link-dresser :counter counter)
-        (assoc-in [:srcs counter]
-                  {:src      child-dresser
-                   :dispatch dispatch-test})
-        (db/with-result counter))))
-
-(defn build
-  [registry]
-  (let [dresser (vary-meta {}
-                           (fn [m]
-                             (-> (assoc m :type ::db/dresser)
-                                 (assoc `dp/-transact -transact)
-                                 (assoc `dp/-add wrapped-add)
-                                 (assoc `dp/-with-temp-data hm/-with-temp-data)
-                                 (assoc `dp/-temp-data hm/-temp-data))))]
-    (reduce (fn [m [src dispatch-test]]
-              (append-dresser m src dispatch-test))
-            dresser
-            registry)))
 
 
-(comment
-  (db/add! dresser2 :hello {:doc 1})
+;; (defn dispatch
+;;   "Returns the src-dresser for the target-drawer
+;;   In order of precedence:
+;;   1. Matching the drawer tests
+;;   2. Already exists in a dresser
+;;   3. Fallback on the first dresser."
+;;   [dresser target-drawer]
+;;   (db/tx-let [tx dresser]
+;;       ;; First try with the registry
+;;       [src-id (some (fn [[src-id {:keys [dispatch]}]]
+;;                       (when (some #(if (fn? %)
+;;                                      (% target-drawer)
+;;                                      (= % target-drawer)) dispatch)
+;;                         src-id))
+;;                     (:srcs dresser))
+;;        ;; Try to find a dresser that already has the target-drawer.
+;;        src-id (or src-id
+;;                   (let [{:keys [srcs]} tx]
+;;                     (reduce (fn [tx [src-id {:keys [src]}]]
+;;                               (let [[src drawer?] (db/dr (db/has-drawer? src target-drawer))]
+;;                                 (cond-> (assoc-src tx src-id src)
+;;                                   drawer? (db/with-result src-id)
+;;                                   drawer? reduced)))
+;;                             tx srcs)))
+;;        ;; If this fails, just pick the first one in the registry.
+;;        src-id (or src-id (ffirst (:srcs dresser)))]
+;;     (db/with-result tx src-id)))
 
-  (db/tx-let [tx (build registry) {:result? false}]
-      [user-id (db/add! tx :users {:username "Bob"})
-       invoice-id (db/add! tx :invoices {:amount 10})
-       hello-id (db/add! tx :hello {:msg "bonjour!"})]
-    (db/with-result tx
-      {:hello-id   hello-id
-       :invoice-id invoice-id
-       :user-id    user-id})))
 
-(comment
-  (db/raw-> (build {dresser1 [:invoices]
-                    dresser2 [:users]}) (db/add! :users {:doc 1}) (db/add! :invoices {:doc 2}))
-  )
+;; (defn drawer-dispatch-wrapper
+;;   "Warning: only applies to methods with 'drawer' argument."
+;;   [method]
+;;   (fn [tx drawer & args]
+;;     ;; Assume we are inside a transaction
+;;     (let [[tx dispatch-key] (db/dr (dispatch tx drawer))
+;;           child-tx (apply method (get-src tx dispatch-key) drawer args)
+;;           result (db/result child-tx)]
+;;       (-> (assoc-src tx dispatch-key child-tx)
+;;           (db/with-result result)))))
+
+
+
+;; (defn append-dresser
+;;   [link-dresser child-dresser dispatch-test]
+;;   (let [counter (inc (:counter link-dresser 0))]
+;;     (-> (assoc link-dresser :counter counter)
+;;         (assoc-in [:srcs counter]
+;;                   {:src      child-dresser
+;;                    :dispatch dispatch-test})
+;;         (db/with-result counter))))
+
+;; (defn- methods-with-drawer
+;;   "Returns all the symbols for which the associated method has 'drawer'
+;;   as the 2nd argument."
+;;   []
+;;   (for [[sym m] dp/dresser-methods
+;;         :when (= (second (:args m)) 'drawer)]
+;;     sym))
+
+
+;; ;; Can't use 'ext/defext' because we overwrite `-transact` and `-temp-data`.
+;; (defn build
+;;   [registry]
+;;   ;; Note: the order in the registry has some importance.  The last
+;;   ;; dresser will be the innermost, meaning its transaction will be
+;;   ;; the first to commit.
+;;   (let [dresser (vary-meta {}
+;;                            (fn [m]
+;;                              (merge (assoc m :type ::db/dresser)
+;;                                     (into {}
+;;                                           (for [sym (methods-with-drawer)
+;;                                                 :let [method (resolve sym)]]
+;;                                             [sym (drawer-dispatch-wrapper method)]))
+;;                                     {`dp/-transact -transact
+;;                                      `dp/-with-temp-data hm/-with-temp-data
+;;                                      `dp/-temp-data hm/-temp-data})))]
+;;     (reduce (fn [m [src dispatch-test]]
+;;               (append-dresser m src dispatch-test))
+;;             dresser
+;;             registry)))
+
+
+;; (comment
+;;   (db/add! dresser2 :hello {:doc 1})
+
+;;   (db/tx-let [tx (build registry) {:result? false}]
+;;       [user-id (db/add! tx :users {:username "Bob"})
+;;        invoice-id (db/add! tx :invoices {:amount 10})
+;;        hello-id (db/add! tx :hello {:msg "bonjour!"})]
+;;     {:hello-id   hello-id
+;;      :invoice-id invoice-id
+;;      :user-id    user-id}))
+
+;; (comment
+;;   (let [dresser1 (hm/build)
+;;         dresser2 (hm/build)]
+;;     (db/tx-let [tx (build [[dresser1 [:invoices]]
+;;                            [dresser2 [:users]]])
+;;                 {:result? false}]
+;;         [user1 (db/add! tx :users {:doc 1})
+;;          invoice1 (db/add! tx :invoices {:doc 2})]
+;;       (db/delete! tx :invoices invoice1)
+;;       ))
+
+
+;;   (let [dresser1 (at/build)
+;;         dresser2 (at/build)]
+;;     (db/tx-let [tx (build [[dresser1 [:invoices]]
+;;                            [dresser2 [:users]]])
+;;                 {:result? false}]
+;;         [user1 (db/add! tx :users {:doc 1})
+;;          invoice1 (db/add! tx :invoices {:doc 2})]
+;;       (db/delete! tx :invoices invoice1)
+;;       ))
+;;   )
+
+;; (comment
+;;   (def invoices-db
+;;     (let [*db (at/build (dt/no-tx-reuse (hm/build)))]
+;;       (db/add! *db :invoices {:invoice 1})
+;;       *db))
+;;   (def users-db
+;;     (let [*db (dt/no-tx-reuse (at/build))]
+;;       (db/add! *db :users {:name "Bob"})
+;;       *db))
+
+;;   (def merged-db
+;;     (build [[invoices-db []]
+;;             [users-db []]])))

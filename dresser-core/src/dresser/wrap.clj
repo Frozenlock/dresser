@@ -1,5 +1,6 @@
 (ns dresser.wrap
-  (:require [dresser.base :as db]))
+  (:require [dresser.base :as db]
+            [dresser.protocols :as dp]))
 
 (def ^:dynamic ^:private *stack-level* nil)
 
@@ -40,7 +41,7 @@
 
 (defn build
   "Expects a map of method symbols with a configuration map
-  Ex: {`dp/-add {:wrap ..., :closing ...}}
+  Ex: {`dp/add {:wrap ..., :closing ...}}
 
   -----
   `:wrap` is a function receiving a dresser method and returns a
@@ -71,7 +72,7 @@
                (fn [m]
                  (reduce (fn [m [sym {:keys [wrap closing]}]]
                            (update m sym
-                                   #(-> ((or wrap identity) %)
+                                   #(-> ((or wrap identity) (or % (dp/fundamental sym)))
                                         (wrap-closing-fn sym closing))))
                          m
                          method->wrap)))))

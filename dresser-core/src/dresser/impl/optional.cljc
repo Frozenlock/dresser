@@ -2,37 +2,39 @@
   (:require [dresser.base :as db]
             [dresser.protocols :as dp]))
 
-(dp/defimpl -gen-id
+;; Default implementations for DresserOptional protocol methods
+;; These delegate to fundamental methods and can be used in extend-protocol
+
+(defn gen-id
   [tx _drawer]
   ;; This should probably be UUIDv7, but it isn't available yet.
   (db/with-result tx (str (random-uuid))))
 
-(dp/defimpl -add
+(defn add
   [tx drawer data]
   (let [[tx document-id] (db/dr (db/gen-id! tx drawer))]
     (-> (db/assoc-at! tx drawer document-id [] data)
         (db/with-result document-id))))
 
-(dp/defimpl -all-ids
+(defn all-ids
   [tx drawer]
   (-> tx
       (db/fetch drawer {:only [:id]})
       (db/update-result #(mapv :id %))))
 
-(dp/defimpl -update-at
+(defn update-at
   [tx drawer id ks f args]
   (let [[tx old-data] (db/dr (db/get-at tx drawer id ks))
         new-data (apply f old-data args)]
     (-> (db/assoc-at! tx drawer id ks new-data)
         (db/with-result new-data))))
 
-
-(dp/defimpl -dissoc-at
+(defn dissoc-at
   [tx drawer id ks dissoc-ks]
   (-> (db/update-at! tx drawer id ks #(apply dissoc % dissoc-ks))
       (db/with-result nil)))
 
-(dp/defimpl -get-at
+(defn get-at
   [tx drawer id ks only]
   (let [only-m (if (seq ks)
                  (reduce #(hash-map %2 %1) (or only :?)
@@ -42,36 +44,35 @@
         (db/fetch-by-id drawer id {:only only-m})
         (db/update-result #(get-in % ks)))))
 
-(dp/defimpl -fetch-by-id
+(defn fetch-by-id
   [tx drawer id only where]
   (-> tx
       (db/fetch drawer {:only  only
                         :where (assoc where :id id)})
       (db/update-result first)))
 
-(dp/defimpl -fetch-count
+(defn fetch-count
   [tx drawer where]
   (-> tx
       (db/fetch drawer {:only  [::fake-key]
                         :where where})
       (db/update-result count)))
 
-(dp/defimpl -upsert-many
+(defn upsert-many
   [tx drawer docs]
   (-> (reduce (fn [tx data]
                 (db/assoc-at! tx drawer (:id data) [] data))
               tx docs)
       (db/with-result docs)))
 
-(dp/defimpl -has-drawer?
+(defn has-drawer?
   [tx drawer]
   (db/tx-let [tx tx]
       [ret (db/fetch tx drawer {:limit 1
                                 :only  [::fake-key]})]
-    true
     (> (count ret) 0)))
 
-(dp/defimpl -dresser-id
+(defn dresser-id
   [tx]
   (let [[tx d-id] (db/dr (db/get-at tx db/drs-drawer db/drs-doc-id [:dresser-id]))]
     (if d-id
@@ -79,7 +80,7 @@
       (let [[tx d-id] (db/dr (db/gen-id! tx db/drs-drawer))]
         (db/assoc-at! tx db/drs-drawer db/drs-doc-id [:dresser-id] d-id)))))
 
-(dp/defimpl -drawer-key
+(defn drawer-key
   [tx drawer-id]
   (db/with-result tx drawer-id))
 
@@ -87,7 +88,7 @@
 
 (def drawer-registry :drs_drawer-registry)
 
-(dp/defimpl -rename-drawer
+(defn rename-drawer
   [dresser drawer new-drawer]
   (db/tx-let [tx dresser]
       [;; fetch all the documents
@@ -96,22 +97,46 @@
        _ (db/drop! tx drawer)]
     (db/with-result tx new-drawer)))
 
+;; Extend DresserOptional with default implementations
+(extend-protocol dp/DresserOptional
+  #?(:clj Object :cljs default)
+  (-fetch-by-id [dresser drawer id only where]
+    (fetch-by-id dresser drawer id only where))
 
+  (-fetch-count [dresser drawer where]
+    (fetch-count dresser drawer where))
 
+  (-update-at [dresser drawer id ks f args]
+    (update-at dresser drawer id ks f args))
 
-(def optional-impl
-  "Naive/slow implementation of higher order dresser method."
-  (dp/mapify-impls
-   [-add
-    -all-ids
-    -dissoc-at
-    -dresser-id
-    -drawer-key
-    -fetch-by-id
-    -fetch-count
-    -gen-id
-    -get-at
-    -has-drawer?
-    -rename-drawer
-    -update-at
-    -upsert-many]))
+  (-add [dresser drawer data]
+    (add dresser drawer data))
+
+  (-all-ids [dresser drawer]
+    (all-ids dresser drawer))
+
+  (-dissoc-at [dresser drawer id ks dissoc-ks]
+    (dissoc-at dresser drawer id ks dissoc-ks))
+
+  (-gen-id [dresser drawer]
+    (gen-id dresser drawer))
+
+  (-get-at [dresser drawer id ks only]
+    (get-at dresser drawer id ks only))
+
+  (-upsert-many [dresser drawer docs]
+    (upsert-many dresser drawer docs))
+
+  (-dresser-id [dresser]
+    (dresser-id dresser))
+
+  (-drawer-key [dresser drawer-id]
+    (drawer-key dresser drawer-id))
+
+  (-rename-drawer [dresser drawer new-drawer]
+    (rename-drawer dresser drawer new-drawer))
+
+  (-has-drawer? [dresser drawer]
+    (has-drawer? dresser drawer)))
+
+(defn load-optional [] true)

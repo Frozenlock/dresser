@@ -9,11 +9,10 @@
 
 (use-fixtures :once (dt/coverage-check wrap))
 
+(deftest basic-implementation
+  (dt/test-impl #(wrap/build (dt/no-tx-reuse (hm/build)) {})))
+
 (deftest wrap
-
-  (testing "Implementation"
-    (dt/test-impl #(wrap/build (dt/no-tx-reuse (hm/build)) {})))
-
   (testing "Pre and post method"
     (let [make-impl (fn []
                       (-> (hm/build)
@@ -27,13 +26,13 @@
           wrap-fn (fn [impl pre-k post-k]
                     ;; The wrappper adds pre-k and post-k document
                     ;; whenever the 'add' method is called
-                    (wrap/build impl {`dp/-add {:wrap (fn [add-method]
-                                                        (fn [tx drawer data]
-                                                          (db/tx-let [tx tx]
-                                                              [_ (add-method tx drawer {:v pre-k})
-                                                               id (add-method tx drawer data)
-                                                               _ (add-method tx drawer {:v post-k})]
-                                                            id)))}}))]
+                    (wrap/build impl {`dp/add {:wrap (fn [add-method]
+                                                       (fn [tx drawer data]
+                                                         (db/tx-let [tx tx]
+                                                             [_ (add-method tx drawer {:v pre-k})
+                                                              id (add-method tx drawer data)
+                                                              _ (add-method tx drawer {:v post-k})]
+                                                           id)))}}))]
       (let [result (db/tx-> (wrap-fn (make-impl) :pre1 :post1)
                      (dt/is-> (db/add! :users {:v "User1"}) (= 2))
                      (dt/is-> (db/tx-> (db/fetch :users {})
@@ -64,79 +63,39 @@
   (testing "closing"
     (let [impl (dt/no-tx-reuse (dt/sequential-id (hm/build)))
           dresser (-> impl
-                      (wrap/build {`dp/-add {:wrap    (fn [_m]
-                                                        (fn [tx & args]
-                                                          (db/update-result tx conj :wrap1)))
-                                             :closing (fn close1 [tx & args]
-                                                        (db/update-result tx conj :closing1))}})
+                      (wrap/build {`dp/add {:wrap    (fn [_m]
+                                                       (fn [tx & args]
+                                                         (db/update-result tx conj :wrap1)))
+                                            :closing (fn close1 [tx & args]
+                                                       (db/update-result tx conj :closing1))}})
                       ;; Layer without closing fn
-                      (wrap/build {`dp/-add {:wrap (fn [m]
-                                                     (fn [tx & args]
-                                                       (-> (apply m tx args)
-                                                           (db/update-result conj :wrap2))))}})
-                      (wrap/build {`dp/-add {:wrap    (fn [m]
-                                                        (fn [tx & args]
-                                                          (-> (apply m tx args)
-                                                              (db/update-result conj :wrap3))))
-                                             :closing (fn close2 [tx & args]
-                                                        (db/update-result tx conj :closing3))}})
+                      (wrap/build {`dp/add {:wrap (fn [m]
+                                                    (fn [tx & args]
+                                                      (-> (apply m tx args)
+                                                          (db/update-result conj :wrap2))))}})
+                      (wrap/build {`dp/add {:wrap    (fn [m]
+                                                       (fn [tx & args]
+                                                         (-> (apply m tx args)
+                                                             (db/update-result conj :wrap3))))
+                                            :closing (fn close2 [tx & args]
+                                                       (db/update-result tx conj :closing3))}})
                       ;; Layer without closing fn
-                      (wrap/build {`dp/-add {:wrap (fn [m]
-                                                     (fn [tx & args]
-                                                       (-> (apply m tx args)
-                                                           (db/update-result conj :wrap4))))}}))]
+                      (wrap/build {`dp/add {:wrap (fn [m]
+                                                    (fn [tx & args]
+                                                      (-> (apply m tx args)
+                                                          (db/update-result conj :wrap4))))}}))]
       (db/tx-> dresser
         (dt/is-> (db/add! :test {}) (= [:closing1 :closing3 :wrap4 :wrap3 :wrap2 :wrap1]))
         (dt/testing-> "Closing fns are dropped once used"
           (db/with-result nil)
           (dt/is-> (db/add! :test {}) (= [:closing1 :closing3 :wrap4 :wrap3 :wrap2 :wrap1]))))))
 
-  (deftest mixed-wrapped-methods
-    (let [impl (dt/no-tx-reuse (dt/sequential-id (hm/build)))
-          tx-wrapper (let [tx-id (gensym "tx-")]
-                       {:wrap (fn [m]
-                                (fn [tx f opts]
-                                  (let [tx-lvl (or (db/temp-data tx [tx-id]) 1)]
-                                    (-> tx (db/update-temp-data update tx-id (fnil inc 0))
-                                        ; Disable returning result
-                                        (db/update-result conj (str "tx-enter-" tx-lvl))
-                                        (m f (assoc opts :result? false))))))
-                        :closing
-                        (fn [tx f opts]
-                          (let [tx-lvl (or (db/temp-data tx [tx-id]) 1)
-                                tx (-> (db/assoc-temp-data tx tx-id (dec tx-lvl))
-                                       (db/update-result conj (str "tx-leave-" tx-lvl)))]
-                            (if (= tx-lvl 1)
-                              (cond-> (db/update-temp-data tx dissoc tx-id)
-                                ; Enabled returning result if at top level
-                                (:result? opts) db/result)
-                              tx)))})
-          add-wraper-fn (fn [id apply-method?]
-                          {:wrap    (fn [m]
-                                      (fn [tx & args]
-                                        ;; Don't really add the document
-                                        (-> (if apply-method?
-                                              (apply m tx args)
-                                              tx)
-                                            (db/update-result conj (str "wrap-" id)))))
-                           :closing (fn close1 [tx & args]
-                                      (db/update-result tx conj (str "close-" id)))})
-          dresser (-> impl
-                      (wrap/build
-                       {`dp/-add      (add-wraper-fn 1 false)
-                        `dp/-transact tx-wrapper})
-                      (wrap/build
-                       {`dp/-add (add-wraper-fn 2 true)}))]
-      (is (= (db/add! dresser :test {})
-             ["tx-leave-1" "close-1" "close-2" "wrap-2" "wrap-1" "tx-enter-1"]))))
-
-
   (testing "Transaction reverts changes on exeption"
     (let [layer1 (-> (hm/build)
                      (dt/sequential-id)
                      (dt/no-tx-reuse)
                      (at/build))
-          layer2 (-> (wrap/build layer1 {`dp/-add
+          layer2 (-> (wrap/build layer1 {`dp/add
                                          {:wrap
                                           (fn [m]
                                             (fn [tx & args]
@@ -150,3 +109,39 @@
       (is (= []
              (db/all-ids layer1 :drawer)
              (db/all-ids layer2 :drawer))))))
+
+(deftest mixed-wrapped-methods
+  (let [impl (dt/no-tx-reuse (dt/sequential-id (hm/build)))
+        tx-wrapper (let [tx-id (gensym "tx-")]
+                     {:wrap (fn [m]
+                              (fn [tx f opts]
+                                (let [tx-lvl (or (db/temp-data tx [tx-id]) 1)]
+                                  (-> tx (db/update-temp-data update tx-id (fnil inc 0))
+                                      (db/update-result conj (str "tx-enter-" tx-lvl))
+                                      (m f opts)))))
+                      :closing
+                      (fn [tx f opts]
+                        (let [tx-lvl (or (db/temp-data tx [tx-id]) 1)
+                              tx (-> (db/assoc-temp-data tx tx-id (dec tx-lvl))
+                                     (db/update-result conj (str "tx-leave-" tx-lvl)))]
+                          (if (= tx-lvl 1)
+                            (db/update-temp-data tx dissoc tx-id)
+                            tx)))})
+        add-wraper-fn (fn [id apply-method?]
+                        {:wrap    (fn [m]
+                                    (fn [tx & args]
+                                      ;; Don't really add the document
+                                      (-> (if apply-method?
+                                            (apply m tx args)
+                                            tx)
+                                          (db/update-result conj (str "wrap-" id)))))
+                         :closing (fn close1 [tx & args]
+                                    (db/update-result tx conj (str "close-" id)))})
+        dresser (-> impl
+                    (wrap/build
+                     {`dp/add      (add-wraper-fn 1 false)
+                      `dp/transact tx-wrapper})
+                    (wrap/build
+                     {`dp/add (add-wraper-fn 2 true)}))]
+      (is (= ["tx-leave-1" "close-1" "close-2" "wrap-2" "wrap-1" "tx-enter-1"]
+             (db/add! dresser :test {})))))

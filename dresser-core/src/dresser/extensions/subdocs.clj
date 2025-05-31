@@ -105,13 +105,13 @@
   []
   {:deps [refs/durable-refs]
    :wrap-configs
-   {`dp/-delete-many {:wrap (fn [method]
-                              (fn [tx drawer where]
-                                (-> tx
-                                    (clean! drawer where)
-                                    (method drawer where))))}
-    `dp/-drop        {:wrap (fn [method]
-                              (fn [tx drawer]
-                                (-> tx
-                                    (clean! drawer {}) ;; Match all documents
-                                    (method drawer))))}}})
+   {`dp/delete-many {:wrap (fn [method]
+                             (fn [tx drawer where]
+                               (-> tx
+                                   (clean! drawer where)
+                                   (method drawer where))))}
+    `dp/drop        {:wrap (fn [method]
+                             (fn [tx drawer]
+                               (-> tx
+                                   (clean! drawer {}) ;; Match all documents
+                                   (method drawer))))}}})

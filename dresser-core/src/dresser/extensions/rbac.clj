@@ -192,56 +192,47 @@
 
 (def method->request-fn
   (let [never-f (fn [& _] -never)
-        m->p {`dp/-fetch       (fn [drawer only _limit _where _sort _skip]
-                                 {:read (assoc-in {} [drawer *doc-id*] only)})
-              `dp/-all-drawers never-f
-              `dp/-delete      (fn [drawer id]
-                                 {:delete {drawer {id :?}}})
-              `dp/-delete-many (fn [drawer _where]
-                                 {:delete (assoc-in {} [drawer *doc-id*] :?)})
+        m->p {`dp/fetch       (fn [drawer only _limit _where _sort _skip]
+                                {:read (assoc-in {} [drawer *doc-id*] only)})
+              `dp/all-drawers never-f
+              `dp/delete-many (fn [drawer _where]
+                                {:delete (assoc-in {} [drawer *doc-id*] :?)})
 
-              `dp/-temp-data      -always
-              `dp/-with-temp-data -always
-              `dp/-transact       -always
+              `dp/temp-data      -always
+              `dp/with-temp-data -always
+              `dp/transact       -always
 
               ;; optional implementations
-              `dp/-fetch-by-id        (fn [drawer id only where]
-                                        {:read (assoc-in {} [drawer id] only)})
-              `dp/-update-at          (fn [drawer id ks _f _args]
-                                        (let [request (assoc-in {} (into [drawer id] ks) :?)]
-                                          {:write request
-                                           :read  request}))
-              `dp/-add                (fn [drawer _data]
-                                        {:add drawer})
-              `dp/-all-ids            never-f
-              `dp/-assoc-at           (fn [drawer id ks _data]
-                                        {:write (assoc-in {} (into [drawer id] ks) :?)})
-              `dp/-dissoc-at          (fn [drawer id ks dissoc-ks]
-                                        {:write (assoc-in {} (into [drawer id] ks)
-                                                          (into {} (for [k dissoc-ks]
-                                                                     [k :?])))})
-              `dp/-drop               never-f
-              `dp/-gen-id             never-f
-              `dp/-get-at             (fn [drawer id ks only]
-                                        {:read (assoc-in {} (into [drawer id] ks) (or only :?))})
-              `dp/-has-drawer?        never-f
-              `dp/-upsert-many        (fn [drawer _docs]
-                                        {:write {drawer :?}})
-              `dp/-dresser-id         -always
-              `dp/-rename-drawer      never-f
-              `dp/-drawer-id          -always
-              `dp/-upsert-drawer-id   never-f
-              `dp/-register-drawer-id never-f
-              `dp/-drawer-key         -always
-              `dp/-start              -always
-              `dp/-stop               -always
-              `dp/-started?           -always
-              `dp/-fetch-count        never-f}
-        methods-without-permission (seq (remove (set (keys m->p))
-                                                dp/dresser-symbols))]
-    (when methods-without-permission
-      (throw (ex-info "Missing permissions definition"
-                      {:methods methods-without-permission})))
+              `dp/fetch-by-id        (fn [drawer id only where]
+                                       {:read (assoc-in {} [drawer id] only)})
+              `dp/update-at          (fn [drawer id ks _f _args]
+                                       (let [request (assoc-in {} (into [drawer id] ks) :?)]
+                                         {:write request
+                                          :read  request}))
+              `dp/add                (fn [drawer _data]
+                                       {:add drawer})
+              `dp/all-ids            never-f
+              `dp/assoc-at           (fn [drawer id ks _data]
+                                       {:write (assoc-in {} (into [drawer id] ks) :?)})
+              `dp/dissoc-at          (fn [drawer id ks dissoc-ks]
+                                       {:write (assoc-in {} (into [drawer id] ks)
+                                                         (into {} (for [k dissoc-ks]
+                                                                    [k :?])))})
+              `dp/drop               never-f
+              `dp/gen-id             never-f
+              `dp/get-at             (fn [drawer id ks only]
+                                       {:read (assoc-in {} (into [drawer id] ks) (or only :?))})
+              `dp/has-drawer?        never-f
+              `dp/upsert-many        (fn [drawer _docs]
+                                       {:write {drawer :?}})
+              `dp/dresser-id         -always
+              `dp/rename-drawer      never-f
+              `dp/drawer-id          -always
+              `dp/drawer-key         -always
+              `dp/start              -always
+              `dp/stop               -always
+              `dp/started?           -always
+              `dp/fetch-count        never-f}]
     m->p))
 
 
@@ -288,7 +279,7 @@
           error-fn (fn [message]
                      (ex-info message
                               {:by      member-ref
-                               :method  (name `dp/-add)
+                               :method  (name `dp/add)
                                :request mbr-request
                                :target  adder-ref
                                :type    ::permission}))
@@ -435,7 +426,7 @@
                            (->> (apply ?request-fn drawer rargs)
                                 (missing-permissions provided-permissions)
                                 (not-empty)))]
-            (let [is-fetch? (= method-sym `dp/-fetch)
+            (let [is-fetch? (= method-sym `dp/fetch)
                   fetched-tx (when (and is-fetch? ?request)
                                (fetch-and-check member-ref
                                                 method-sym
@@ -447,7 +438,7 @@
                   tx (cond
                        fetched-tx tx
 
-                       (= method-sym `dp/-delete-many)
+                       (= method-sym `dp/delete-many)
                        (check-and-delete member-ref
                                          method-sym
                                          provided-permissions
@@ -465,7 +456,7 @@
                                             ?request))]
               (-> (or fetched-tx
                       (cond-> (apply method tx args)
-                        (= method-sym `dp/-add) (post-add drawer member-ref)))
+                        (= method-sym `dp/add) (post-add drawer member-ref)))
                   (db/update-temp-data dissoc wrapper-id)))))))))
 
 
@@ -487,7 +478,7 @@
    ;:throw-on-reuse? true
    :wrap-configs
    (let [wrapper-id (str (gensym "RBAC-"))]
-     (into {} (for [sym dp/dresser-symbols
+     (into {} (for [sym (keys method->request-fn)
                     :let [wrap (permission-wrapper member-ref sym permissions wrapper-id)]
                     :when wrap]
                 [sym {:wrap wrap}])))})

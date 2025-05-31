@@ -134,5 +134,5 @@
     {:deps         []
      :init-fn      (fn [dresser]
                      (db/update-temp-data dresser assoc cache-key cache-dresser))
-     :wrap-configs {`dp/-get-at {:wrap (partial cache-get-at cache-key)}
-                    `dp/-assoc-at {:wrap (partial cache-assoc-at cache-key)}}}))
+     :wrap-configs {`dp/get-at {:wrap (partial cache-get-at cache-key)}
+                    `dp/assoc-at {:wrap (partial cache-assoc-at cache-key)}}}))

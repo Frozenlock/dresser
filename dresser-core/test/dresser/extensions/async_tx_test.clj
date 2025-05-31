@@ -54,7 +54,7 @@
 
 (deftest transact-init-errs
   (let [dresser (vary-meta (hm/build)
-                           assoc `dp/-transact
+                           assoc `dp/transact
                            (fn [tx f opts]
                              (throw (ex-info "Boom!" {}))))
         d1 (atx/async-tx dresser)]
@@ -228,10 +228,8 @@
       ;; Add data to the transaction
       (let [[tx-with-data _] (db/dr (db/raw-> tx-with-client
                                       (db/add! :users {:name "Immutable test"})))]
-
         ;; First client commits - transaction should still be active
         (let [tx-after-a (atx/end-tx! tx-with-data {:client-id :client-a})]
-
           ;; Verify data is visible within transaction
           (is (= '({:name "Immutable test"})
                  (db/fetch tx-after-a :users {:only [:name]})))

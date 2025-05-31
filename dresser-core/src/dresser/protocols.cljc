@@ -1,152 +1,166 @@
 (ns dresser.protocols
-  #?@
-   (:cljs [(:require-macros [dresser.base :refer [defpro impl]])]))
+  "Core Dresser protocols with extension support.
 
-#?(:clj
-   (defmacro defpro
-     "Same as defprotocol, also defines a map of methods (qualified
-  symbols) and configs under the name <protocol-name>-methods."
-     {:arglists '[name & opts+sigs]}
-     [protocol-name & body]
-     (let [method->cfgs (into {} (for [x body
-                                       :when (list? x)
-                                       :let [args (second x)]]
-                                   [(first x) (merge (select-keys (meta args) [:tx :w])
-                                                     {:args args})]))]
-       `(do (defprotocol ~protocol-name ~@body)
-            (def ~(symbol (str protocol-name "-methods"))
-              (into {} [~@(for [[m args] method->cfgs]
-                            `[(symbol (resolve '~m)) '~args])]))))))
+  This namespace defines the fundamental and optional protocols that make up
+  a Dresser implementation. The architecture enables a layered approach where:
 
-;; metadata: :tx is a transaction method, :w is a potential write method.
+  1. Direct implementations (defrecord methods) provide fast, core functionality
+  2. Extension wrappers enable middleware and additional features
+  3. Default implementations ensure all dressers work out-of-the-box
 
-(defpro DresserFundamental
+  ## Protocols
+
+  - DresserFundamental: Core methods that users typically implement directly
+  - DresserOptional: Convenience methods with default implementations
+
+  Users only need to implement DresserFundamental methods to get a fully
+  functional dresser. DresserOptional methods can be overridden for performance
+  optimizations when needed.
+
+  Note: Both protocols use :extend-via-metadata true to allow Clojure's built-in
+  metadata-based protocol implementations, which is separate from our custom
+  extension wrapping mechanism."
+  (:refer-clojure :exclude [drop]))
+
+;; 'satisfies' is unfortunately really slow.
+;; IsDresser is an alternative solution as proposed by
+;; https://bsless.github.io/datahike-datalog-parser/
+(defprotocol IsDresser
+  (-dresser? [_]))
+
+(extend-protocol IsDresser
+  #?(:clj Object :cljs default)
+  (-dresser? [_] false))
+
+(extend-type nil
+  IsDresser
+  (-dresser? [_] false))
+
+
+;;; Extendable / wrappable protocols
+
+(defprotocol DresserFundamental
   :extend-via-metadata true
   ;; --- Fundamental methods ---
-  (-fetch ^:tx [dresser drawer only limit where sort skip]
-          "Fetches documents from drawer.")
-  (-all-drawers ^:tx [dresser] "Returns a sequence of all drawers keys")
-  (-delete-many ^:tx ^:w [dresser drawer where]
-                "Delete all documents matching `where`. Returns {:deleted-count <qty>}")
-  (-assoc-at ^:tx ^:w [dresser drawer id ks data]
-             "Similar to `clojure.core/assoc-in`, but for a drawer. Returns data.")
-  (-drop ^:tx ^:w [dresser drawer] "Removes the drawer. Returns the provided drawer.")
-  (-transact [dresser f {:keys [result?] :as opts}]
-             "Evaluates the provided function inside a transaction.
-  `opts`:
-  If `:result?` is true (default), automatically returns the result
-  when exiting the transaction. The function should accept dresser as
-  an argument.")
-  (-temp-data [dresser] "Returns the dresser temporary data (a map).")
-  (-with-temp-data [dresser data] "Sets the dresser temporary data (a map).
+  (-fetch [tx drawer only limit where sort skip])
+  (-all-drawers [tx])
+  (-delete-many [tx drawer where])
+  (-assoc-at [tx drawer id ks data])
+  (-drop [tx drawer])
+  (-transact [dresser f {:keys [result?] :as opts}])
+  (-temp-data [dresser])
+  (-with-temp-data [dresser data])
+  (-immutable? [dresser])
+  (-tx? [dresser]))
 
-  The data should be immutable. Assume that any process can call this
-  method at any time."))
-
-(defpro DresserOptional
-  "Those method can be implemented directly for improved performance,
-or they can be constructed using the `DresserFundamental` methods. See
-`dresser.impl.optional`."
+(defprotocol DresserOptional
   :extend-via-metadata true
-  (-fetch-by-id ^:tx [dresser drawer id only where]
-                "Fetches a document from drawer. See also `fetch`.")
-  (-fetch-count ^:tx [dresser drawer where])
-  (-update-at ^:tx ^:w [dresser drawer id ks f args]
-              "Similar to `clojure.core/update-in`. Returns the value that was updated-in.")
-  (-add ^:tx ^:w [dresser drawer data] "Adds a document (map) and returns its ID.")
-  (-all-ids ^:tx [dresser drawer] "Returns a sequence of all document IDs from this drawer.")
-  (-dissoc-at ^:tx ^:w [dresser drawer id ks dissoc-ks]
-              "Dissoc the dissoc-keys from the value at located at ks. Returns nil.")
-  (-gen-id ^:tx ^:w [dresser drawer] "Generates an ID for a document in the given drawer.")
-  (-get-at ^:tx [dresser drawer id ks only] "Similar to `clojure.core/get-in`, but for a drawer.")
-  (-upsert-many ^:tx ^:w [dresser drawer docs]
-                "Insert many documents, each containing an `:id`. Returns documents")
-  (-dresser-id ^:tx [dresser] "Returns the dresser ID")
-  (-drawer-key ^:tx [dresser drawer-id] "Returns the drawer key. Mostly for implementing the drawer registry.")
-  (-rename-drawer ^:tx ^:w [dresser drawer new-drawer] "Returns new-drawer.")
-  (-has-drawer? ^:tx [dresser drawer] "Returns true if the dresser has the drawer."))
+  (-fetch-by-id [tx drawer id only where])
+  (-fetch-count [tx drawer where])
+  (-update-at [tx drawer id ks f args])
+  (-add [tx drawer data])
+  (-all-ids [tx drawer])
+  (-dissoc-at [tx drawer id ks dissoc-ks])
+  (-gen-id [tx drawer])
+  (-get-at [tx drawer id ks only])
+  (-upsert-many [tx drawer docs])
+  (-dresser-id [tx])
+  (-drawer-key [tx drawer-id])
+  (-rename-drawer [tx drawer new-drawer])
+  (-has-drawer? [tx drawer]))
 
-
-(defpro DresserLifecycle
+(defprotocol DresserLifecycle
   :extend-via-metadata true
-  (-start [dresser] "Returns dresser")
-  (-stop [dresser] "Returns dresser"))
+  (-start [dresser])
+  (-stop [dresser]))
 
-;; Default implementation is no-op.
+;; Default no-op implementation for DresserLifecycle
 (extend-protocol DresserLifecycle
-  #?(:clj java.lang.Object :cljs default)
-  (-start [this]
-    this)
-  (-stop [this]
-    this))
+  #?(:clj Object :cljs default)
+  (-start [this] this)
+  (-stop [this] this))
 
-(def dresser-methods
-  (merge DresserFundamental-methods
-         DresserOptional-methods
-         DresserLifecycle-methods))
 
-(def dresser-symbols
-  "All the dresser methods as symbols."
-  (keys dresser-methods))
+(defmacro defext
+  "Defines an extension function that can be wrapped by middleware.
 
-;; Those macros are there to attach the ns metadata for easier
-;; debugging and provide a few sanity checks when defining a method
-;; implementation.
+  Usage:
+    (defext add -add [tx drawer data])
 
-#?(:clj
-   (do
-     (defn vali-method!
-       [qualified-symbol args]
-       (let [expected-args (get-in dresser-methods [qualified-symbol :args])]
-         (when-not expected-args
-           (throw (ex-info "Method not found" {:method    qualified-symbol
-                                               :potential (sort (keys dresser-methods))})))
-         (when-not (= (count args) (count expected-args))
-           (throw (ex-info "Arguments mismatch" {:method        qualified-symbol
-                                                 :provided-args args
-                                                 :expected-args expected-args})))))
+  Creates a function that checks metadata for a wrapped version,
+  falling back to the specified protocol method resolved at call time."
+  [name protocol-method args & body]
+  (let [ext-sym (symbol (str (ns-name *ns*)) (str name))]
+    `(defn ~name {::p-method (symbol (var ~protocol-method))} ~args
+       (let [f# (or (get (meta ~(first args)) '~ext-sym)
+                    ~protocol-method)]
+         (f# ~@args)))))
 
-     (defmacro with-source
-       "Attaches the :line, :column and :file metadata."
-       [obj &form]
-       (let [f *file*
-             form-meta (meta &form)]
-         `(vary-meta ~obj merge ~form-meta {:file ~f :ns (ns-name *ns*)})))
 
-     (let [current-ns *ns*]
-       (defmacro impl
-         "Creates an inline IDresser implementation."
-         {:style/indent 1}
-         [sym args & body]
-         (let [qualified-symbol (symbol (ns-resolve current-ns sym))
-               _ (vali-method! qualified-symbol args)
-               f `(fn ~(symbol (name sym))
-                    ~args
-                    ~@body)]
-           `(-> (with-source ~f ~&form) ; &form won't work if called from another macro...
-                (vary-meta merge (meta '~sym)) ; ...so also use the symbol's metadata
-                (vary-meta merge {:method-symbol '~qualified-symbol}))))
+(defmacro named-fn
+  [sym-name args & body]
+  `(fn ~sym-name ~args ~@body))
 
-       (defmacro defimpl
-         "Defines an idresser method implementation."
-         {:style/indent 1}
-         [sym args & body]
-         (let [qualified-symbol (symbol (ns-resolve current-ns sym))
-               _ (vali-method! qualified-symbol args)
-               arglists (list (get-in dresser-methods [qualified-symbol :args]))]
-           `(let [f# (with-source (impl ~sym ~args ~@body) ~&form)
-                  fvar# (def ~sym f#)]
-              (alter-meta! fvar# merge (meta f#) {:arglists      '~arglists
-                                                  :omit-coverage true})
-              fvar#))))))
 
-(defn mapify-impls
-  "Turns implementations into a usable (metadata) protocol methods map.
+(defn fundamental
+  [sym]
+  (if-let [protocol-method-sym (::p-method (meta (resolve sym)))]
+    (let [method (resolve protocol-method-sym)]
+      (fn [& args]
+        (apply method args)))
+    (throw (ex-info "Symbol isn't a method wrapper" {:symbol sym}))))
 
-  Works with `impl` and `defimpl`."
-  [impls]
-  (->> (for [impl impls
-             :let [sym (:method-symbol (meta impl))
-                   _ (assert sym)]]
-         [sym impl])
-       (into {})))
+(defn wrap-method
+  "Wraps an extension method on a dresser, handling metadata-first dispatch.
+  Creates a wrapper that resolves the protocol method at call time.
+
+  Usage:
+    (wrap-method dresser `ext-add wrapper-fn arg1 arg2 ...)
+
+  The extension function's ::p-method metadata contains the protocol method symbol."
+  [dresser ext-sym wrapper-fn & wrapper-args]
+  (vary-meta dresser
+             (fn [m]
+               (update m ext-sym #(apply wrapper-fn
+                                         (or % (fundamental ext-sym))
+                                         wrapper-args)))))
+
+(defn get-or-fundamental
+  "Gets the metadata fn stored at 'sym', or fallbacks on the fundamental
+method."
+  [m sym]
+  (or (get m sym)
+      (fundamental sym)))
+
+;; Extension functions for all wrappable methods
+
+;; DresserFundamental extensions
+(defext fetch -fetch [tx drawer only limit where sort skip])
+(defext all-drawers -all-drawers [tx])
+(defext delete-many -delete-many [tx drawer where])
+(defext assoc-at -assoc-at [tx drawer id ks data])
+(defext drop -drop [tx drawer])
+(defext transact -transact [dresser f opts])
+(defext temp-data -temp-data [dresser])
+(defext with-temp-data -with-temp-data [dresser data])
+(defext immutable? -immutable? [dresser])
+(defext tx? -tx? [dresser])
+
+;; DresserOptional extensions
+(defext fetch-by-id -fetch-by-id [tx drawer id only where])
+(defext fetch-count -fetch-count [tx drawer where])
+(defext update-at -update-at [tx drawer id ks f args])
+(defext add -add [tx drawer data])
+(defext all-ids -all-ids [tx drawer])
+(defext dissoc-at -dissoc-at [tx drawer id ks dissoc-ks])
+(defext gen-id -gen-id [tx drawer])
+(defext get-at -get-at [tx drawer id ks only])
+(defext upsert-many -upsert-many [tx drawer docs])
+(defext dresser-id -dresser-id [tx])
+(defext drawer-key -drawer-key [tx drawer-id])
+(defext rename-drawer -rename-drawer [tx drawer new-drawer])
+(defext has-drawer? -has-drawer? [tx drawer])
+
+;; DresserLifecycle extensions
+(defext start -start [dresser])
+(defext stop -stop [dresser])

@@ -194,15 +194,15 @@ doesn't have any."
   {:deps         [refs/durable-refs]
    :init-fn      #(db/with-system-drawers % [ttl-drawer])
    :wrap-configs (let [tasks (WeakHashMap.)]
-                   {`dp/-start {:wrap (fn [start-method]
-                                        (fn [dresser]
-                                          (let [started-drs (start-method dresser)
-                                                task (create-scheduled-task started-drs delay-between-delete-ms)]
-                                            (.put tasks started-drs task)
-                                            started-drs)))}
-                    `dp/-stop  {:wrap (fn [stop-method]
-                                        (fn [dresser]
-                                          (when-let [task (.get tasks dresser)]
-                                            (stop-scheduled-task task)
-                                            (.remove tasks dresser))
-                                          (stop-method dresser)))}})})
+                   {`dp/start {:wrap (fn [start-method]
+                                       (fn [dresser]
+                                         (let [started-drs (start-method dresser)
+                                               task (create-scheduled-task started-drs delay-between-delete-ms)]
+                                           (.put tasks started-drs task)
+                                           started-drs)))}
+                    `dp/stop  {:wrap (fn [stop-method]
+                                       (fn [dresser]
+                                         (when-let [task (.get tasks dresser)]
+                                           (stop-scheduled-task task)
+                                           (.remove tasks dresser))
+                                         (stop-method dresser)))}})})

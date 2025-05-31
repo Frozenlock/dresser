@@ -16,13 +16,12 @@
   Ephemeral DB only; does not check for existing IDs.
   Only works at the fundamental level."
   [dresser]
-  (let [*counter (atom {})]
-    (->> (dp/mapify-impls [(dp/impl -gen-id
-                             [dresser drawer]
-                             (db/with-result dresser
-                               (-> (swap! *counter update drawer (fnil inc 0))
-                                   (get drawer))))])
-         (vary-meta dresser merge))))
+  (let [*counter (atom {})
+        f (fn [dresser drawer]
+            (db/with-result dresser
+              (-> (swap! *counter update drawer (fnil inc 0))
+                  (get drawer))))]
+    (vary-meta dresser merge {`dp/gen-id f})))
 
 (defn- test-dresser
   []

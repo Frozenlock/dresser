@@ -5,6 +5,7 @@
             [dresser.protocols :as dp]
             [dresser.test :as dt]))
 
+(opt/load-optional)
 ;; Implementation with simple hashmap
 
 (t/with-test
@@ -277,53 +278,29 @@
        ;; Fall back to regular fetch
        (fetch-from-docs (vals drawer-map) only limit where sort-config skip)))))
 
-(dp/defimpl -fetch
-  [tx drawer only limit where sort-config skip]
-  (db/with-result tx
-    (let [drawer-map (get-in tx [:db drawer])]
+;; Implementation functions
+(defn fetch
+  [dresser drawer only limit where sort-config skip]
+  (db/with-result dresser
+    (let [drawer-map (get-in dresser [:db drawer])]
       (fetch-optimized* drawer-map only limit where sort-config skip))))
 
-
-(dp/defimpl -transact
-  [dresser f {:keys [result?]}]
-  (if (:transact dresser)
-    (f dresser)
-    ;; When not already inside a transaction, add a marker
-    (let [dresser (f (assoc dresser :transact true))]
-      ; Extract the result at the end
-      (if result?
-        (db/result dresser)
-        (dissoc dresser :transact)))))
-
-(dp/defimpl -with-temp-data
-  [dresser data]
-  (assoc dresser :data data))
-
-(dp/defimpl -temp-data
+(defn all-drawers
   [dresser]
-  (get dresser :data))
+  (db/with-result dresser (keys (:db dresser))))
 
-(dp/defimpl -delete-many
-  [tx drawer where]
-  (db/tx-let [tx tx]
+(defn delete-many
+  [dresser drawer where]
+  (db/tx-let [tx dresser]
       [ids (-> (db/fetch tx drawer {:where where
                                     :only  {:id :?}})
                (db/update-result #(mapv :id %)))]
     (-> (update-in tx [:db drawer] #(apply dissoc % ids))
         (db/with-result {:deleted-count (count ids)}))))
 
-(dp/defimpl -drop
-  [tx drawer]
-  (-> (update tx :db dissoc drawer)
-      (db/with-result drawer)))
-
-(dp/defimpl -all-drawers
-  [tx]
-  (db/with-result tx (keys (:db tx))))
-
-(dp/defimpl -assoc-at
-  [tx drawer id ks data]
-  (-> (update-in tx [:db drawer]
+(defn assoc-at
+  [dresser drawer id ks data]
+  (-> (update-in dresser [:db drawer]
                  (fn [drawer-map]
                    (let [drawer-map (or drawer-map (sorted-map-by lax-compare))
                          doc (get drawer-map id)
@@ -334,47 +311,80 @@
                      (assoc drawer-map id new-doc))))
       (db/with-result data)))
 
+(defn drop-drawer
+  [dresser drawer]
+  (-> (update dresser :db dissoc drawer)
+      (db/with-result drawer)))
 
-(def hashmap-base-impl
-  (dp/mapify-impls
-   [-all-drawers
-    -assoc-at
-    -delete-many
-    -drop
-    -fetch
-    -temp-data
-    -transact
-    -with-temp-data]))
+(defn do-transact
+  [dresser f opts]
+  (let [tx (f (assoc dresser :transact true))]
+    (assoc tx :transact false)))
 
-(dp/defimpl -fetch-by-id
-  [tx drawer id only where]
-  (db/with-result tx
-    (some-> (get-in tx [:db drawer id])
+(defn get-temp-data
+  [dresser]
+  (get dresser :data))
+
+(defn set-temp-data
+  [dresser data]
+  (assoc dresser :data data))
+
+(defn fetch-by-id
+  [dresser drawer id only where]
+  (db/with-result dresser
+    (some-> (get-in dresser [:db drawer id])
             (where? where)
             (take-from only))))
 
-(def hashmap-adv-impl
-  (dp/mapify-impls [-fetch-by-id]))
+;; HashmapDresser record that delegates to functions
+(defrecord HashmapDresser [db data transact]
+  dp/IsDresser
+  (-dresser? [this] true)
 
+  dp/DresserFundamental
+  (-fetch [this drawer only limit where sort-config skip]
+    (fetch this drawer only limit where sort-config skip))
 
-;; This is used to test the optional implementations
-(defn- base-impl-build
-  {:test #(dt/test-impl (fn [] (dt/no-tx-reuse (base-impl-build {}))))}
-  [m]
-  (-> (db/make-dresser {:db (reduce-kv
-                             (fn [acc drawer-name drawer-map]
-                               (assoc acc drawer-name (into (sorted-map-by lax-compare) drawer-map)))
-                             (sorted-map-by lax-compare);{}
-                             m)} true)
-      (vary-meta
-       merge
-       opt/optional-impl
-       hashmap-base-impl)
-      (db/with-temp-dresser-id)))
+  (-all-drawers [this]
+    (all-drawers this))
+
+  (-delete-many [this drawer where]
+    (delete-many this drawer where))
+
+  (-assoc-at [this drawer id ks data]
+    (assoc-at this drawer id ks data))
+
+  (-drop [this drawer]
+    (drop-drawer this drawer))
+
+  (-transact [this f opts]
+    (do-transact this f opts))
+
+  (-temp-data [this]
+    (get-temp-data this))
+
+  (-with-temp-data [this data]
+    (set-temp-data this data))
+
+  (-immutable? [this]
+    true)
+
+  (-tx? [this]
+    (:transact this)))
+
 
 (defn build
+  "Build a hashmap-based dresser from initial data."
   {:test #(dt/test-impl (fn [] (dt/no-tx-reuse (build))))}
   ([] (build {}))
-  ([m] (vary-meta (base-impl-build m)
-                  merge
-                  hashmap-adv-impl)))
+  ([m]
+   (let [db-data (reduce-kv
+                  (fn [acc drawer-name drawer-map]
+                    (assoc acc drawer-name (into (sorted-map-by lax-compare) drawer-map)))
+                  (sorted-map-by lax-compare)
+                  m)]
+     (-> (->HashmapDresser db-data nil false)
+         ;; Provide a faster implementation of the optional
+         ;; 'fetch-by-id'
+         (vary-meta assoc `dp/-fetch-by-id fetch-by-id)
+         (db/with-temp-dresser-id)))))

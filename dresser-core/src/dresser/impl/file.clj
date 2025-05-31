@@ -55,22 +55,17 @@
     (db/reduce-tx tx load-drawer! data)))
 
 (defn wrap-transact
-  [t filename force-reload?]
+  [transact filename force-reload?]
   (fn [dresser f opts]
-    (let [new-f (fn [dresser & args]
-                  (if (db/temp-data dresser [::transact?])
-                    ;; Already in transaction
-                    (apply f dresser args)
-
-                    ;; Starting a new transaction
-                    (let [tx (apply f (db/assoc-temp-data dresser ::transact? true) args)
-                          result (db/result tx)
-                          [tx data] (db/dr (db/to-edn tx))]
-                      (save-to-file! filename data)
-                      (cond-> (db/update-temp-data tx dissoc ::transact?)
-                        force-reload? (reload! filename)
-                        true (db/with-result result)))))]
-      (t dresser new-f opts))))
+    (let [wrap-f (fn [tx]
+                   (let [tx (f tx)
+                         result (db/result tx)
+                         [tx data] (db/dr (db/to-edn tx))]
+                     (save-to-file! filename data)
+                     (cond-> tx
+                       force-reload? (reload! filename)
+                       true (db/with-result result))))]
+      (transact dresser wrap-f opts))))
 
 (defn build
   "Builds a file-backed dresser from a filename.
@@ -97,6 +92,4 @@
   ([filename init-data force-reload?]
    (let [data (or (load-from-file filename) init-data)
          atom-dresser (at/build data)]
-     (vary-meta atom-dresser
-                (fn [m]
-                  (update m `dp/-transact #(wrap-transact % filename force-reload?)))))))
+     (dp/wrap-method atom-dresser `dp/transact wrap-transact filename force-reload?))))

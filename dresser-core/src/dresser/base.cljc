@@ -8,32 +8,36 @@
 (defrecord Dresser [])
 
 (defn dresser?
-  "Returns true if x is of type ::dresser (checks via metadata)."
+  "Returns true if x is a dresser."
   [x]
-  ;; Currently (clojure 1.11.1) `satisfies?` doesn't work with methods
-  ;; provided via metadata. Fallback on record instead.
-  (= (type x) Dresser))
+  (dp/-dresser? x))
 
 (defn make-dresser
-  [inner-map immutable?]
-  (-> (into (->Dresser) inner-map)
-      (with-meta (meta inner-map))
-      (vary-meta assoc ::immutable? immutable?)))
+  [dresser immutable?]
+  (-> (vary-meta dresser assoc ::immutable? immutable?)))
+
 
 (defn immutable?
-  [x]
-  (::immutable? (meta x)))
+  "Returns true if the dresser is immutable."
+  [dresser]
+  (dp/immutable? dresser))
+
+(defn tx?
+  "Returns true if the dresser is currently in a transaction."
+  [dresser]
+  (dp/tx? dresser))
 
 (defn temp-data
   {:doc (:doc (meta #'dp/-temp-data))}
-  ([dresser] (dp/-temp-data dresser))
+  ([dresser]
+   (dp/temp-data dresser))
   ([dresser ks]
-   (get-in (dp/-temp-data dresser) ks)))
+   (get-in (temp-data dresser) ks)))
 
 (defn with-temp-data
   {:doc (:doc (meta #'dp/-with-temp-data))}
   [dresser data]
-  (dp/-with-temp-data dresser data))
+  (dp/with-temp-data dresser data))
 
 (defn update-temp-data
   [dresser f & args]
@@ -53,14 +57,14 @@
 
 
 (defn start
-  {:doc (:doc (meta #'dp/-start))}
+  "Starts the dresser. Returns the started dresser."
   [dresser]
-  (dp/-start dresser))
+  (dp/start dresser))
 
 (defn stop
-  {:doc (:doc (meta #'dp/-stop))}
+  "Stops the dresser. Returns the stopped dresser."
   [dresser]
-  (dp/-stop dresser))
+  (dp/stop dresser))
 
 
 (defn result
@@ -83,25 +87,23 @@
   ([dresser id]
    (update-temp-data dresser assoc :temp-id id)))
 
+
 (defn transact!
-  {:doc (:doc (meta #'dp/-transact))}
-  ([dresser f] (dp/-transact dresser f {:result? true}))
+  "Evaluates the provided function inside a transaction.
+
+  If already in a transaction, simply calls the function.
+  Otherwise starts a new transaction.
+
+  Returns the result if :result? is true (default), otherwise returns the updated dresser."
+  ([dresser f] (transact! dresser f {:result? true}))
   ([dresser f {:keys [result?] :as opts}]
    (assert (dresser? dresser) "Transact first argument should be a dresser")
-   (dp/-transact dresser f opts)
-
-   ;; (if (started? dresser)
-   ;;   (-transact dresser f result?)
-   ;;   ;; Too complex? Should we just assume that the dresser is
-   ;;   ;; always started?
-   ;;   (let [started (start dresser)
-   ;;         return (-> (try (-transact started f false)
-   ;;                         (catch Exception e
-   ;;                           (stop started)
-   ;;                           (throw e)))
-   ;;                    (stop))]
-   ;;     (if result? (result return) return)))
-   ))
+   (if (tx? dresser)
+     (f dresser)  ; Already in transaction
+     (let [tx (dp/transact dresser f opts)]
+       (if result?
+         (result tx)    ; Extract and return result
+         tx)))))
 
 (def drs-drawer
   "Drawer to store dresser configuration."
@@ -231,50 +233,76 @@
        "  Note: If inside a transaction, the return value is stored in the result\n"
        "        field and returns the updated dresser object."))
 
-(defmacro wrap-dresser-tx-methods
-  []
-  (cons 'do
-        (for [[method-symbol {:keys [tx w]}] dp/dresser-methods
-              :when tx]
-          (let [fn-name (symbol (-> (name (symbol method-symbol))
-                                    (str/replace #"^-" "")
-                                    (str (when w "!"))))
-                method-var (resolve method-symbol)
-                method-meta (meta method-var)]
-            `(defn ~fn-name
-               ~(str (:doc method-meta)
-                     tx-note)
-               {:arglists '~(:arglists method-meta)}
-               [~'dresser & ~'args]
-               (transact! ~'dresser
-                          (fn [~'tx]
-                            (apply ~method-symbol ~'tx ~'args))))))))
 
+(defn all-drawers
+  {:doc (str "Returns a sequence of all drawers keys." tx-note)}
+  [dresser]
+  (tx-> dresser dp/all-drawers))
 
-(wrap-dresser-tx-methods)
+(defn delete-many!
+  {:doc (str "Delete all documents matching `where`. Returns {:deleted-count <qty>}." tx-note)}
+  [dresser drawer where]
+  (tx-> dresser (dp/delete-many drawer where)))
+
+(defn drop!
+  {:doc (str "Removes the drawer. Returns the provided drawer." tx-note)}
+  [dresser drawer]
+  (tx-> dresser (dp/drop drawer)))
+
+(defn add!
+  {:doc (str "Adds a document (map) and returns its ID." tx-note)}
+  [dresser drawer data]
+  (tx-> dresser (dp/add drawer data)))
+
+(defn all-ids
+  {:doc (str "Returns a sequence of all document IDs from this drawer." tx-note)}
+  [dresser drawer]
+  (tx-> dresser (dp/all-ids drawer)))
+
+(defn gen-id!
+  {:doc (str "Generates an ID for a document in the given drawer." tx-note)}
+  [dresser drawer]
+  (tx-> dresser (dp/gen-id drawer)))
+
+(defn dresser-id
+  {:doc (str "Returns the dresser ID." tx-note)}
+  [dresser]
+  (tx-> dresser dp/dresser-id))
+
+(defn drawer-key
+  {:doc (str "Returns the drawer key. Mostly for implementing the drawer registry." tx-note)}
+  [dresser drawer-id]
+  (tx-> dresser (dp/drawer-key drawer-id)))
+
+(defn rename-drawer!
+  {:doc (str "Returns new-drawer." tx-note)}
+  [dresser drawer new-drawer]
+  (tx-> dresser (dp/rename-drawer drawer new-drawer)))
+
+(defn has-drawer?
+  {:doc (str "Returns true if the dresser has the drawer." tx-note)}
+  [dresser drawer]
+  (tx-> dresser (dp/has-drawer? drawer)))
 
 ;; Custom wrapper for assoc-at! to add ID validation
 (defn assoc-at!
-  {:doc (str (:doc (meta #'dp/-assoc-at)) tx-note)}
+  {:doc (str "Similar to `clojure.core/assoc-in`, but for a drawer. Returns data." tx-note)}
   [dresser drawer id ks data]
   (when (nil? id)
     (throw (ex-info "Missing document ID" {:drawer drawer :id id :ks ks :data data})))
-  (tx-> dresser
-    (dp/-assoc-at drawer id ks data)))
+  (tx-> dresser (dp/assoc-at drawer id ks data)))
 
 ;; Need to wrap those in a function because protocols don't support varargs
 
 (defn update-at!
-  {:doc (str (:doc (meta #'dp/-update-at)) tx-note)}
+  {:doc (str "Similar to `clojure.core/update-in`. Returns the value that was updated-in." tx-note)}
   [dresser drawer id ks f & args]
-  (tx-> dresser
-    (dp/-update-at drawer id ks f args)))
+  (tx-> dresser (dp/update-at drawer id ks f args)))
 
 (defn dissoc-at!
-  {:doc (str (:doc (meta #'dp/-dissoc-at)) tx-note)}
+  {:doc (str "Dissoc the dissoc-keys from the value located at ks. Returns nil." tx-note)}
   [dresser drawer id ks & dissoc-ks]
-  (tx-> dresser
-    (dp/-dissoc-at drawer id ks dissoc-ks)))
+  (tx-> dresser (dp/dissoc-at drawer id ks dissoc-ks)))
 
 (defn only-sugar
   "If provided with a collection, converts it into a simple only map.
@@ -299,34 +327,49 @@
             (vary-meta assoc ::only-expanded? true))))
 
 (defn fetch
-  {:doc (str (:doc (meta #'dp/-fetch)) tx-note)}
+  {:doc (str "Fetches documents from drawer.
+
+  Options:
+  - :only   - Map specifying which fields to return
+  - :limit  - Maximum number of documents to return
+  - :where  - Query conditions map
+  - :sort   - Sort configuration [[path order] ...]
+  - :skip   - Number of documents to skip
+
+  Returns documents matching the criteria." tx-note)}
   ([dresser drawer]
    (fetch dresser drawer {}))
   ([dresser drawer {:keys [only limit where sort skip]}]
-   (tx-> dresser
-     (dp/-fetch drawer (only-sugar only) limit where sort skip))))
+   (tx-> dresser (dp/fetch drawer (only-sugar only) limit where sort skip))))
 
 (defn get-at
-  {:doc (str (:doc (meta #'dp/-get-at)) tx-note)}
+  {:doc (str "Similar to `clojure.core/get-in`, but for a drawer.
+
+  Returns the value at the specified path within a document." tx-note)}
   ([dresser drawer id ks]
    (get-at dresser drawer id ks nil))
   ([dresser drawer id ks only]
-   (tx-> dresser
-     (dp/-get-at drawer id ks (only-sugar only)))))
+   (tx-> dresser (dp/get-at drawer id ks (only-sugar only)))))
 
 (defn fetch-by-id
-  {:doc (str (:doc (meta #'dp/-fetch-by-id)) tx-note)}
+  {:doc (str "Fetches a document from drawer by its ID.
+
+  Options:
+  - :only   - Map specifying which fields to return
+  - :where  - Additional query conditions" tx-note)}
   ([dresser drawer id] (fetch-by-id dresser drawer id {}))
   ([dresser drawer id {:keys [only where]}]
-   (tx-> dresser
-     (dp/-fetch-by-id  drawer id (only-sugar only) where))))
+   (tx-> dresser (dp/fetch-by-id drawer id (only-sugar only) where))))
 
 (defn fetch-count
+  {:doc (str "Returns the count of documents matching the criteria.
+
+  Options:
+  - :where  - Query conditions" tx-note)}
   ([dresser drawer]
-   (fetch-count dresser drawer nil))
+   (fetch-count dresser drawer {}))
   ([dresser drawer {:keys [where]}]
-   (tx-> dresser
-     (dp/-fetch-count drawer where))))
+   (tx-> dresser (dp/fetch-count drawer where))))
 
 (defn delete!
   {:doc (str "Deletes the document if it exists. Returns id." tx-note)}
@@ -341,13 +384,12 @@
   (assoc-at! dresser drawer (:id data) [] data))
 
 (defn upsert-many!
-  {:doc (str (:doc (meta #'dp/-upsert-many)) tx-note)}
+  {:doc (str "Insert many documents, each containing an `:id`. Returns documents." tx-note)}
   [dresser drawer docs]
   (doseq [doc docs]
     (when-not (:id doc)
       (throw (ex-info "Missing document ID" {:doc doc}))))
-  (tx-> dresser
-    (dp/-upsert-many drawer docs)))
+  (tx-> dresser (dp/upsert-many drawer docs)))
 
 ;;;;;;
 

@@ -146,6 +146,39 @@
 ;;;;
 
 
+;; {<drawer-id> {<doc-id ...}}
+;; (defn fetch-by-refs
+;;   "Query a map of references as if it was a drawer.
+
+;;    Takes a map of drawer-ids to document-ids and executes a query across all referenced
+;;    documents, returning results as if they were a single drawer.
+
+;;    Parameters:
+;;      dresser - The dresser object
+;;      refs-map - A map of drawer-ids to maps of document-ids
+;;                 e.g., {\"drawer1_id\" {\"doc1_id\" {}, \"doc2_id\" {}}}
+;;      query - Standard dresser query map with :where, :only, :limit, :sort, :skip
+
+;;    Returns:
+;;      Documents matching the query, with an added :dref key containing the reference"
+;;   [dresser refs-map {:keys [where only limit sort skip] :as query}]
+;;   (db/with-tx [tx dresser]
+;;     (reduce (fn [tx [drawer-id id->doc]]
+;;               (db/tx-let [tx tx]
+;;                   [result (db/result tx)
+;;                    q (cond-> (assoc-in query [:where :id]
+;;                                        {db/any (keys id->doc)})
+;;                        (:only query) (assoc-in [:only :id] :?))
+;;                    drawer (d-reg/drawer-key tx drawer-id)
+;;                    new-result (db/fetch tx drawer q)
+;;                    new-result (-> (for [d new-result]
+;;                                     (assoc d :dref (durable drawer-id (:id d))))
+;;                                   (hm/fetch-from-docs nil limit nil sort skip))]
+;;                 (db/with-result tx (into result new-result))))
+;;             (db/with-result tx [])
+;;             refs-map)))
+
+
 (ext/defext durable-refs
   []
   {:deps [d-reg/drawer-registry]})

@@ -229,16 +229,16 @@
   []
   {:deps [refs/durable-refs]
    :wrap-configs
-   {`dp/-delete-many {:wrap (fn [delete-method]
-                              (fn [tx drawer where]
-                                (cond-> tx
-                                  (not= drawer rel-drawer) (wipe! drawer where)
-                                  true (delete-method drawer where))))}
-    `dp/-drop        {:wrap (fn [drop-method]
-                              (fn [tx drawer]
-                                (cond-> tx
-                                  (not= drawer rel-drawer) (wipe! drawer {})
-                                  true (drop-method drawer))))}}})
+   {`dp/delete-many {:wrap (fn [delete-method]
+                             (fn [tx drawer where]
+                               (cond-> tx
+                                 (not= drawer rel-drawer) (wipe! drawer where)
+                                 true (delete-method drawer where))))}
+    `dp/drop        {:wrap (fn [drop-method]
+                             (fn [tx drawer]
+                               (cond-> tx
+                                 (not= drawer rel-drawer) (wipe! drawer {})
+                                 true (drop-method drawer))))}}})
 
 
 (comment

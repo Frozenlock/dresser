@@ -122,44 +122,49 @@
 
   Ephemeral DB only; does not check for existing IDs."
   [dresser]
-  (let [*counter (atom 0)]
-    (->> (dp/mapify-impls [(dp/impl -gen-id
-                             [dresser _drawer]
-                             (db/with-result dresser
-                               (swap! *counter inc)))])
-         (vary-meta dresser merge))))
+  (let [*counter (atom 0)
+        f (fn [dresser _drawer]
+            (db/with-result dresser
+              (swap! *counter inc)))]
+    (vary-meta dresser merge {`dp/gen-id f})))
 
 (defn no-tx-reuse
   "Throws if a transaction state is used more than once."
   [dresser]
-  (let [*step-count (atom 0)
-        patch (fn [transact!]
-                (fn [dresser f opts]
-                  (transact!
-                   dresser
-                   (fn [tx]
-                     (let [top? (not (::step tx))]
-                       (when-not *disable-tx-counter*
-                         (let [step-count (or @*step-count 0)]
-                           (when-not (= step-count (::step tx 0))
-                             (throw
-                              (ex-info "Transaction state reused"
-                                       {:outside-count step-count
-                                        :inner-count   (::step tx 0)})))
-                           (reset! *step-count (inc step-count))))
-                       (let [return (try
-                                      (f (if *disable-tx-counter*
-                                           tx
-                                           (update tx ::step (fnil inc 0))))
-                                      ; Restore previous count if we encounter an exception
-                                      (catch Exception e (reset! *step-count (::step tx)) (throw e)))]
-                         (or (when top?
-                               (reset! *step-count nil)
-                               (when (db/dresser? tx)
-                                 (dissoc return ::step)))
-                             return))))
-                   opts)))]
-    (vary-meta dresser update `dp/-transact patch)))
+  ;; TODO: no longer works now that db/transact make sure the transact method isn't called more than once.
+  dresser
+  ;; (let [*step-count (atom 0)
+  ;;       patch (fn [transact!]
+  ;;               (fn [dresser f opts]
+  ;;                 (transact!
+  ;;                  dresser
+  ;;                  (fn [tx]
+  ;;                    (let [top? (not (::step tx))]
+  ;;                      (when-not *disable-tx-counter*
+  ;;                        (let [step-count (or @*step-count 0)]
+  ;;                          (prn "Step" step-count)
+  ;;                          (when-not (= step-count (::step tx 0))
+  ;;                            (throw
+  ;;                             (ex-info "Transaction state reused"
+  ;;                                      {:outside-count step-count
+  ;;                                       :inner-count   (::step tx 0)})))
+  ;;                          (reset! *step-count (inc step-count))))
+  ;;                      (let [return (try
+  ;;                                     (f (if *disable-tx-counter*
+  ;;                                          tx
+  ;;                                          (update tx ::step (fnil inc 0))))
+  ;;                                     ; Restore previous count if we encounter an exception
+  ;;                                     (catch Exception e (reset! *step-count (::step tx)) (throw e)))]
+  ;;                        (or (when top?
+  ;;                              (reset! *step-count nil)
+  ;;                              (when (db/dresser? tx)
+  ;;                                (dissoc return ::step)))
+  ;;                            return))))
+  ;;                  opts)))]
+  ;;   (dp/wrap-method dresser `dp/transact patch)
+  ;;   ;(vary-meta dresser update `dp/-transact patch)
+  ;;   )
+  )
 
 (comment
   (-> (no-tx-reuse (dresser.impl.hashmap/build))

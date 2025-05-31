@@ -85,15 +85,15 @@
   []
   {:init-fn #(db/with-system-drawers % [registry key->ids])
    :wrap-configs
-   {`dp/-rename-drawer {:wrap (fn [method]
-                                (fn [tx drawer new-drawer]
+   {`dp/rename-drawer {:wrap (fn [method]
+                               (fn [tx drawer new-drawer]
+                                 (-> tx
+                                     (rename-drawer-in-registry! drawer new-drawer)
+                                     (method drawer new-drawer))))}
+    `dp/drop          {:closing (fn [tx drawer]
                                   (-> tx
-                                      (rename-drawer-in-registry! drawer new-drawer)
-                                      (method drawer new-drawer))))}
-    `dp/-drop          {:closing (fn [tx drawer]
-                                   (-> tx
-                                       (drop-drawer! drawer)
-                                       (db/with-result drawer)))}
-    `dp/-drawer-key    {:wrap (fn [_method]
-                                (fn [tx drawer-id]
-                                  (drawer-key tx drawer-id)))}}})
+                                      (drop-drawer! drawer)
+                                      (db/with-result drawer)))}
+    `dp/drawer-key    {:wrap (fn [_method]
+                               (fn [tx drawer-id]
+                                 (drawer-key tx drawer-id)))}}})

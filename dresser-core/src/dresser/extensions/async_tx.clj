@@ -164,7 +164,9 @@
       (f dresser)
 
       :else
-      (let [f (bound-fn [tx] (f (db/with-temp-data tx (db/temp-data dresser))))
+      (let [f (bound-fn [tx]
+                (let [ret (f (db/with-temp-data tx (db/temp-data dresser)))]
+                  ret))
             *result (promise)]
         (.put queue {:tx-fn (fn [tx]
                               (execute-transaction-step tx f tx-id *result *tx queue))
@@ -213,7 +215,7 @@
    (end-tx! tx)
    ```"
   []
-  {;:throw-on-reuse? true
+  {                                     ;:throw-on-reuse? true
    :init-fn
    (fn [dresser]
      (let [*tx-state (atom {})
@@ -222,7 +224,7 @@
        (vary-meta
         dresser
         (fn [m]
-          (let [tx-method (get m `dp/-transact)
+          (let [tx-method (dp/get-or-fundamental m `dp/transact)
 
                 ?end-method (get m `-end-tx)
                 end-tx (fn [dresser opts]
@@ -256,9 +258,9 @@
                                                   (db/update-result r :result))
                                                 tx)
                                               (deliver *return)))]
-                                 (.put queue {:tx-fn f
+                                 (.put queue {:tx-fn        f
                                               :init-dresser dresser
-                                              :step  :end})
+                                              :step         :end})
                                  (let [r (deref *return (:timeout-ms opts 1000) ::timeout)]
                                    (when (= r ::timeout)
                                      (throw (ex-info "Timeout while committing" {})))
@@ -277,9 +279,9 @@
                                    f (fn [_tx]
                                        (throw (ex-info "Transaction cancelled" {:cancel-fn #(deliver *return %)
                                                                                 :cancel-id tx-id})))
-                                   _ (.put queue {:tx-fn f
+                                   _ (.put queue {:tx-fn        f
                                                   :init-dresser dresser
-                                                  :step  :cancel})
+                                                  :step         :cancel})
                                    ret (deref *return (:timeout-ms opts 1000) ::timeout)]
                                (.clear queue)
                                (if (= ret ::timeout)
@@ -296,22 +298,22 @@
                           ;; If a specific client ID was provided, register it
                           (when (and client-id (:initialized? @*tx-state))
                             (swap! *tx-state update :clients conj client-id))
-                          tx))]
+                          tx))
+                tx? (get m dp/tx?)]
 
             (merge
              m
-             {`-start-tx start
-              `-end-tx end-tx
+             {`-start-tx  start
+              `-end-tx    end-tx
               `-cancel-tx cancel
-              `dp/-transact
+              ;`dp/tx? (fn [_] false)
+              `dp/transact
               (fn [tx f opts]
-                (let [tx' (long-lived-tx tx
+                (let [tx (vary-meta tx assoc `dp/tx? tx?)
+                      tx' (long-lived-tx tx
                                          f
                                          {:*tx   *tx-state
                                           :tx-id tx-id
                                           :queue queue}
                                          (assoc opts :result? false))]
-                  (if (and (zero? (get *tx-states* tx-id 0))
-                           (:result? opts))
-                    (db/result tx')
-                    tx')))}))))))})
+                  (vary-meta tx' assoc `dp/tx? (fn [_] false))))}))))))})
