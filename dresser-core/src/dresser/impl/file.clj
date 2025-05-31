@@ -58,12 +58,15 @@
   [transact filename force-reload?]
   (fn [dresser f opts]
     (let [wrap-f (fn [tx]
-                   (let [tx (f tx)
+                   (let [[tx initial-data] (db/dr (db/to-edn tx))
+                         tx (f tx)
                          result (db/result tx)
-                         [tx data] (db/dr (db/to-edn tx))]
-                     (save-to-file! filename data)
+                         [tx data] (db/dr (db/to-edn tx))
+                         modified? (not= initial-data data)]
+                     (when modified?
+                       (save-to-file! filename data))
                      (cond-> tx
-                       force-reload? (reload! filename)
+                       (and modified? force-reload?) (reload! filename)
                        true (db/with-result result))))]
       (transact dresser wrap-f opts))))
 
