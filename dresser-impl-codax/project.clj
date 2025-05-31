@@ -1,10 +1,10 @@
-(defproject org.clojars.frozenlock/dresser-impl-codax "0.1.0-SNAPSHOT"
+(defproject org.clojars.frozenlock/dresser-impl-codax "0.2.0"
   :description "Codax implementation for Dresser"
   :url "http://example.com/FIXME"
   :license {:name "EPL-2.0 OR GPL-2.0-or-later WITH Classpath-exception-2.0"
             :url  "https://www.eclipse.org/legal/epl-2.0/"}
   :dependencies [[org.clojure/clojure "1.11.1"]
-                 [org.clojars.frozenlock/dresser "0.1.0-SNAPSHOT"]
+                 [org.clojars.frozenlock/dresser "0.2.0"]
                  [codax "1.4.0"]
 
                  ;; hashc has a messy deps tree
