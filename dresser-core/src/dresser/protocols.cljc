@@ -1,41 +1,26 @@
 (ns dresser.protocols
   "Core Dresser protocols with extension support.
 
-  This namespace defines the fundamental and optional protocols that make up
-  a Dresser implementation. The architecture enables a layered approach where:
-
-  1. Direct implementations (defrecord methods) provide fast, core functionality
-  2. Extension wrappers enable middleware and additional features
-  3. Default implementations ensure all dressers work out-of-the-box
+  All dressers use a unified base.Dresser record with metadata-based method
+  dispatch. This enables consistent extension/wrapping behavior across all
+  implementations.
 
   ## Protocols
 
-  - DresserFundamental: Core methods that users typically implement directly
+  - DresserFundamental: Core methods that implementations must provide
   - DresserOptional: Convenience methods with default implementations
 
-  Users only need to implement DresserFundamental methods to get a fully
-  functional dresser. DresserOptional methods can be overridden for performance
-  optimizations when needed.
+  ## Implementation Guidelines
 
-  Note: Both protocols use :extend-via-metadata true to allow Clojure's built-in
-  metadata-based protocol implementations, which is separate from our custom
-  extension wrapping mechanism."
+  Provide method implementations via metadata for extension compatibility:
+  ```clojure
+  (with-meta {:db data}
+    {`dp/fetch my-fetch-fn
+     `dp/transact my-transact-fn})
+  ```
+
+  Base methods (temp-data, immutable?) are provided automatically by make-dresser."
   (:refer-clojure :exclude [drop]))
-
-;; 'satisfies' is unfortunately really slow.
-;; IsDresser is an alternative solution as proposed by
-;; https://bsless.github.io/datahike-datalog-parser/
-(defprotocol IsDresser
-  (-dresser? [_]))
-
-(extend-protocol IsDresser
-  #?(:clj Object :cljs default)
-  (-dresser? [_] false))
-
-(extend-type nil
-  IsDresser
-  (-dresser? [_] false))
-
 
 ;;; Extendable / wrappable protocols
 
