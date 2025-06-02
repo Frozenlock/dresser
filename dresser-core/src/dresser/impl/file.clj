@@ -11,6 +11,50 @@
 ;; Simple file-based dresser implementation
 ;; Wraps atom implementation and persists to file
 
+;;; Modification Tracking Extension (private)
+;;; Tracks whether a dresser has been modified during a transaction
+;;; to avoid expensive serialization/comparison on read-only transactions
+
+(defn- modified?
+  "Returns true if the dresser has been modified in the current transaction."
+  [dresser]
+  (db/temp-data dresser [::modified?]))
+
+(defn- wrap-mutating-method
+  "Wraps a mutating method to mark the dresser as modified."
+  [method]
+  (fn [dresser & args]
+    (-> (apply method dresser args)
+        (db/assoc-temp-data ::modified? true))))
+
+(defn- wrap-transact-for-tracking
+  "Wraps transact to reset the modified flag at transaction start."
+  [transact-method]
+  (fn [dresser f opts]
+    (transact-method dresser
+                     (fn [tx]
+                       ;; Reset modified flag at transaction start
+                       (f (db/assoc-temp-data tx ::modified? false)))
+                     opts)))
+
+(defn- with-modification-tracking
+  "Adds modification tracking to a dresser by wrapping mutating protocol methods."
+  [dresser]
+  (-> dresser
+      ;; Wrap fundamental mutating methods
+      (dp/wrap-method `dp/delete-many wrap-mutating-method)
+      (dp/wrap-method `dp/assoc-at wrap-mutating-method)
+      (dp/wrap-method `dp/drop wrap-mutating-method)
+      ;; Wrap optional mutating methods
+      (dp/wrap-method `dp/update-at wrap-mutating-method)
+      (dp/wrap-method `dp/add wrap-mutating-method)
+      (dp/wrap-method `dp/dissoc-at wrap-mutating-method)
+      (dp/wrap-method `dp/gen-id wrap-mutating-method)
+      (dp/wrap-method `dp/upsert-many wrap-mutating-method)
+      (dp/wrap-method `dp/rename-drawer wrap-mutating-method)
+      ;; Wrap transact to reset flag
+      (dp/wrap-method `dp/transact wrap-transact-for-tracking)))
+
 (defn encode-all
   "Encode both records and byte arrays in data structure"
   [data]
@@ -58,13 +102,12 @@
   [transact filename {:keys [force-reload? serializer deserializer]}]
   (fn [dresser f opts]
     (let [wrap-f (fn [tx]
-                   (let [[tx initial-data] (db/dr (db/to-edn tx))
-                         tx (f tx)
+                   (let [tx (f tx)
                          result (db/result tx)
-                         [tx data] (db/dr (db/to-edn tx))
-                         modified? (not= initial-data data)]
+                         modified? (modified? tx)]
                      (when modified?
-                       (save-to-file! filename data serializer))
+                       (let [[tx data] (db/dr (db/to-edn tx))]
+                         (save-to-file! filename data serializer)))
                      (cond-> tx
                        (and modified? force-reload?) (reload! filename deserializer)
                        true (db/with-result result))))]
@@ -140,4 +183,6 @@
          {:keys [init-data force-reload? serializer deserializer]} opts
          data (or (load-from-file filename deserializer) init-data)
          atom-dresser (at/build data)]
-     (dp/wrap-method atom-dresser `dp/transact wrap-transact filename opts))))
+     (-> atom-dresser
+         with-modification-tracking
+         (dp/wrap-method `dp/transact wrap-transact filename opts)))))
