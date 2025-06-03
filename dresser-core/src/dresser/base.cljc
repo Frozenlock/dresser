@@ -33,14 +33,12 @@
   (dp/tx? dresser))
 
 (defn temp-data
-  {:doc (:doc (meta #'dp/-temp-data))}
   ([dresser]
    (dp/temp-data dresser))
   ([dresser ks]
    (get-in (temp-data dresser) ks)))
 
 (defn with-temp-data
-  {:doc (:doc (meta #'dp/-with-temp-data))}
   [dresser data]
   (dp/with-temp-data dresser data))
 
