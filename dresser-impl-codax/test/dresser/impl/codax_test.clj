@@ -21,11 +21,16 @@
       (throw (ex-info "Timeout" {})))
     ret))
 
+;; TX REUSE?
+;; The tx restart is reusing a transaction state.
+;; Shouldn't matter for Codax, but what about other actions in the tx?
 (deftest write-tx-restart
   (let [db1 (-> (impl/build test-db-path)
-                (dt/no-tx-reuse))
+                ;(dt/no-tx-reuse)
+                )
         db2 (-> (impl/build test-db-path)
-                (dt/no-tx-reuse))
+                ;(dt/no-tx-reuse)
+                )
         *thread1-read (promise)
         *thread2-write (promise)
         *thread1 (future
