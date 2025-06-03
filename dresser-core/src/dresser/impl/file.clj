@@ -104,13 +104,14 @@
     (let [wrap-f (fn [tx]
                    (let [tx (f tx)
                          result (db/result tx)
-                         modified? (modified? tx)]
-                     (when modified?
-                       (let [[tx data] (db/dr (db/to-edn tx))]
-                         (save-to-file! filename data serializer)))
-                     (cond-> tx
-                       (and modified? force-reload?) (reload! filename deserializer)
-                       true (db/with-result result))))]
+                         modified? (modified? tx)
+                         tx (if modified?
+                              (let [[tx data] (db/dr (db/to-edn tx))]
+                                (save-to-file! filename data serializer)
+                                (cond-> tx
+                                  force-reload? (reload! filename deserializer)))
+                              tx)]
+                     (db/with-result tx result)))]
       (transact dresser wrap-f opts))))
 
 (declare build)
