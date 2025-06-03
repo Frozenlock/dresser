@@ -1,6 +1,7 @@
 (ns dresser.impl.atom
   (:require [dresser.base :as db]
             [dresser.impl.hashmap :as hm]
+            [dresser.impl.optional :as opt]
             [dresser.protocols :as dp]
             [dresser.test :as dt]))
 
@@ -16,6 +17,7 @@
                                  (dissoc (meta dresser)
                                          ;; Exclude non-transactional
                                          `dp/transact `dp/start `dp/stop
+                                         `dp/temp-data `dp/with-temp-data
                                          `dp/immutable?))
                       (db/with-temp-data temp-data)
                       (db/transact! f (assoc opts :result? false)))
@@ -51,9 +53,11 @@
                    :lock    (gensym "lock-")}
                   (with-meta
                     (merge (meta inner-dresser)
-                           {`dp/transact   do-transact
-                            `dp/start      do-start
-                            `dp/stop       do-stop
-                            `dp/immutable? (fn [_] false)})))]
+                           {`dp/transact       do-transact
+                            `dp/start          do-start
+                            `dp/stop           do-stop
+                            `dp/immutable?     (fn [_] false)
+                            `dp/with-temp-data opt/with-temp-data
+                            `dp/temp-data      opt/temp-data})))]
      (-> (db/make-dresser impl false)
          (db/with-temp-dresser-id)))))

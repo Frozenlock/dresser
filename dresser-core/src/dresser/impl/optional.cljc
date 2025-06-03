@@ -97,6 +97,15 @@
        _ (db/drop! tx drawer)]
     (db/with-result tx new-drawer)))
 
+(defn temp-data
+  "Default implementation: stores temp-data in metadata."
+  [dresser]
+  (::temp-data (meta dresser)))
+
+(defn with-temp-data
+  "Default implementation: stores temp-data in metadata."
+  [dresser data]
+  (vary-meta dresser assoc ::temp-data data))
 
 ;; Map of default optional implementations for metadata
 (def default-implementations
@@ -112,5 +121,6 @@
    `dp/dresser-id     dresser-id
    `dp/drawer-key     drawer-key
    `dp/rename-drawer  rename-drawer
-   `dp/has-drawer?    has-drawer?})
-
+   `dp/has-drawer?    has-drawer?
+   `dp/temp-data      temp-data
+   `dp/with-temp-data with-temp-data})

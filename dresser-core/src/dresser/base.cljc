@@ -14,9 +14,7 @@
 
 (defn make-dresser
   [fundamental-impl immutable?]
-  (let [base-methods {`dp/-temp-data      (fn [dresser] (::temp-data (meta dresser)))
-                      `dp/-with-temp-data (fn [dresser data] (vary-meta dresser assoc ::temp-data data))
-                      `dp/-immutable?     (fn [_] immutable?)}]
+  (let [base-methods {`dp/-immutable? (fn [_] immutable?)}]
     (-> (->Dresser)
         (into fundamental-impl)
         (with-meta (merge base-methods (meta fundamental-impl))))))

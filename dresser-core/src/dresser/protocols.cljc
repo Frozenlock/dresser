@@ -33,8 +33,6 @@
   (-assoc-at [tx drawer id ks data])
   (-drop [tx drawer])
   (-transact [dresser f {:keys [result?] :as opts}])
-  (-temp-data [dresser])
-  (-with-temp-data [dresser data])
   (-immutable? [dresser])
   (-tx? [dresser]))
 
@@ -62,7 +60,9 @@
   (-dresser-id [tx])
   (-drawer-key [tx drawer-id])
   (-rename-drawer [tx drawer new-drawer])
-  (-has-drawer? [tx drawer]))
+  (-has-drawer? [tx drawer])
+  (-temp-data [dresser])
+  (-with-temp-data [dresser data]))
 
 (defprotocol DresserLifecycle
   :extend-via-metadata true
@@ -74,7 +74,6 @@
   #?(:clj Object :cljs default)
   (-start [this] this)
   (-stop [this] this))
-
 
 (defmacro defext
   "Defines an extension function that can be wrapped by middleware.
@@ -91,11 +90,9 @@
                     ~protocol-method)]
          (f# ~@args)))))
 
-
 (defmacro named-fn
   [sym-name args & body]
   `(fn ~sym-name ~args ~@body))
-
 
 (defn fundamental
   [sym]
@@ -136,8 +133,6 @@ method."
 (defext assoc-at -assoc-at [tx drawer id ks data])
 (defext drop -drop [tx drawer])
 (defext transact -transact [dresser f opts])
-(defext temp-data -temp-data [dresser])
-(defext with-temp-data -with-temp-data [dresser data])
 (defext immutable? -immutable? [dresser])
 (defext tx? -tx? [dresser])
 
@@ -155,6 +150,8 @@ method."
 (defext drawer-key -drawer-key [tx drawer-id])
 (defext rename-drawer -rename-drawer [tx drawer new-drawer])
 (defext has-drawer? -has-drawer? [tx drawer])
+(defext temp-data -temp-data [dresser])
+(defext with-temp-data -with-temp-data [dresser data])
 
 ;; DresserLifecycle extensions
 (defext start -start [dresser])
