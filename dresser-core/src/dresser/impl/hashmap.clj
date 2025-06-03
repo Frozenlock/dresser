@@ -311,10 +311,7 @@
   (-> dresser
       (vary-meta assoc ::in-tx? true)
       (f)
-      (vary-meta dissoc ::in-tx?))
-  ;; (let [tx (f (assoc dresser :transact true))]
-  ;;   (assoc tx :transact false))
-  )
+      (vary-meta dissoc ::in-tx?)))
 
 (defn fetch-by-id
   [dresser drawer id only where]
@@ -323,31 +320,34 @@
             (where? where)
             (take-from only))))
 
-;; Hashmap implementation methods provided via metadata
+
+(defn- base-impl-build
+  "Hashamp implementation without overriding the optional methods"
+  {:test #(dt/test-impl (fn [] (dt/no-tx-reuse (base-impl-build {}))))}
+  [m]
+  (let [db-data (reduce-kv
+                 (fn [acc drawer-name drawer-map]
+                   (assoc acc drawer-name (into (sorted-map-by lax-compare) drawer-map)))
+                 (sorted-map-by lax-compare)
+                 m)
+        impl (-> db-data
+                 (with-meta
+                   (merge opt/default-implementations
+                          {`dp/fetch       fetch
+                           `dp/all-drawers all-drawers
+                           `dp/delete-many delete-many
+                           `dp/assoc-at    assoc-at
+                           `dp/drop        drop-drawer
+                           `dp/transact    do-transact
+                           `dp/tx?         (fn [this] (::in-tx? (meta this)))})))]
+    (-> (db/make-dresser impl true)
+        (db/with-temp-dresser-id))))
 
 (defn build
   "Build a hashmap-based dresser from initial data."
   {:test #(dt/test-impl (fn [] (dt/no-tx-reuse (build))))}
   ([] (build {}))
   ([m]
-   (let [;; Process the user data directly without wrapping in :db
-         db-data (reduce-kv
-                  (fn [acc drawer-name drawer-map]
-                    (assoc acc drawer-name (into (sorted-map-by lax-compare) drawer-map)))
-                  (sorted-map-by lax-compare)
-                  m)
-         ;; Create implementation map with user data directly at top level
-         impl (-> db-data ; User data becomes the base map
-                  (with-meta
-                    (merge opt/default-implementations
-                           {`dp/fetch fetch
-                            `dp/all-drawers all-drawers
-                            `dp/delete-many delete-many
-                            `dp/assoc-at assoc-at
-                            `dp/drop drop-drawer
-                            `dp/transact do-transact
-                            `dp/tx? (fn [this] (::in-tx? (meta this)))
-                            ;; Optional optimization
-                            `dp/fetch-by-id fetch-by-id})))]
-     (-> (db/make-dresser impl true)
-         (db/with-temp-dresser-id)))))
+   (-> (base-impl-build m)
+       ;; Optional optimization
+       (vary-meta assoc `dp/fetch-by-id fetch-by-id))))
