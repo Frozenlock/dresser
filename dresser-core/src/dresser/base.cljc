@@ -5,7 +5,7 @@
 
 ;; TODO: When ID is nil, should methods be no-op and return nil?
 
-(defrecord Dresser [in-tx? temp-data])
+(defrecord Dresser [])
 
 (defn dresser?
   "Returns true if x is a dresser."
@@ -14,10 +14,10 @@
 
 (defn make-dresser
   [fundamental-impl immutable?]
-  (let [base-methods {`dp/-temp-data      (fn [dresser] (:temp-data dresser))
-                      `dp/-with-temp-data (fn [dresser data] (assoc dresser :temp-data data))
+  (let [base-methods {`dp/-temp-data      (fn [dresser] (::temp-data (meta dresser)))
+                      `dp/-with-temp-data (fn [dresser data] (vary-meta dresser assoc ::temp-data data))
                       `dp/-immutable?     (fn [_] immutable?)}]
-    (-> (->Dresser false {})
+    (-> (->Dresser)
         (into fundamental-impl)
         (with-meta (merge base-methods (meta fundamental-impl))))))
 

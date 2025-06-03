@@ -16,8 +16,7 @@
                                  (dissoc (meta dresser)
                                          ;; Exclude non-transactional
                                          `dp/transact `dp/start `dp/stop
-                                         `dp/temp-data `dp/with-temp-data
-                                         `dp/immutable? `dp/tx?))
+                                         `dp/immutable?))
                       (db/with-temp-data temp-data)
                       (db/transact! f (assoc opts :result? false)))
           _ (when-not (compare-and-set! (:*source dresser)
@@ -53,7 +52,6 @@
                   (with-meta
                     (merge (meta inner-dresser)
                            {`dp/transact   do-transact
-                            `dp/tx?        #(dp/tx? @(:*source %))
                             `dp/start      do-start
                             `dp/stop       do-stop
                             `dp/immutable? (fn [_] false)})))]

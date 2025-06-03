@@ -36,7 +36,6 @@
     (is (= source
            (take-from source nil)))))
 
-
 (defn- path-comparator [path order]
   (let [order-int ({:asc 1, :desc -1} order)]
     (fn [m1 m2]
@@ -56,7 +55,6 @@
             result
             (recur (rest paths))))))))
 
-
 (t/with-test
   (defn- sort-maps-by [sort-config maps]
     (if (not-empty sort-config)
@@ -74,7 +72,6 @@
     (is (= [m2 m4 m3 m1] (sort-maps-by sort-config maps)))
     (is (= [m1 m3 m2 m4] (sort-maps-by equality-sort-conflict maps)))
     (is (= maps (sort-maps-by [] maps)))))
-
 
 (defn- lax-compare
   "Similar to compare, but will also return a value for items of different types.
@@ -94,25 +91,25 @@
   [data-entry field-key test-val]
   (some-> (get data-entry field-key)
           (lax-compare test-val)
-          (<  0)))
+          (< 0)))
 
 (defn- lte
   [data-entry field-key test-val]
   (some-> (get data-entry field-key)
           (lax-compare test-val)
-          (<=  0)))
+          (<= 0)))
 
 (defn- gt
   [data-entry field-key test-val]
   (some-> (get data-entry field-key)
           (lax-compare test-val)
-          (>  0)))
+          (> 0)))
 
 (defn- gte
   [data-entry field-key test-val]
   (some-> (get data-entry field-key)
           (lax-compare test-val)
-          (>=  0)))
+          (>= 0)))
 
 (defn- exists?
   [data-entry field-key bool]
@@ -126,7 +123,6 @@
   [data-entry field-key test-val]
   (some #(where? data-entry {field-key %}) test-val))
 
-
 (def query-ops
   {;; :=       = ; implied
    ::db/exists? exists?
@@ -135,7 +131,6 @@
    ::db/lt      lt
    ::db/lte     lte
    ::db/any     any})
-
 
 (defn where?
   "Returns `data` if all the conditions are met, nil otherwise."
@@ -161,7 +156,6 @@
                 conditions)
       data)))
 
-
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; (comment
@@ -186,7 +180,6 @@
 ;;             (into {}))
 ;;        source)))
 
-
 ;;   {:members
 ;;    {::db/*
 ;;     {::db/when {:type  :admin
@@ -196,9 +189,7 @@
 
 ;;   )
 
-
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 
 (defn take-or-all
   "Exactly like `clojure.core/take`, but returns coll if n is nil."
@@ -249,27 +240,27 @@
              end-inclusive? (contains? id-queries ::db/lte)
              ;; Get the appropriate range from the sorted map
              range-seq (cond
-                        (and start-key end-key)
-                        (if start-inclusive?
-                          (if end-inclusive?
-                            (subseq drawer-map >= start-key <= end-key)
-                            (subseq drawer-map >= start-key < end-key))
-                          (if end-inclusive?
-                            (subseq drawer-map > start-key <= end-key)
-                            (subseq drawer-map > start-key < end-key)))
+                         (and start-key end-key)
+                         (if start-inclusive?
+                           (if end-inclusive?
+                             (subseq drawer-map >= start-key <= end-key)
+                             (subseq drawer-map >= start-key < end-key))
+                           (if end-inclusive?
+                             (subseq drawer-map > start-key <= end-key)
+                             (subseq drawer-map > start-key < end-key)))
 
-                        start-key
-                        (if start-inclusive?
-                          (subseq drawer-map >= start-key)
-                          (subseq drawer-map > start-key))
+                         start-key
+                         (if start-inclusive?
+                           (subseq drawer-map >= start-key)
+                           (subseq drawer-map > start-key))
 
-                        end-key
-                        (if end-inclusive?
-                          (subseq drawer-map <= end-key)
-                          (subseq drawer-map < end-key))
+                         end-key
+                         (if end-inclusive?
+                           (subseq drawer-map <= end-key)
+                           (subseq drawer-map < end-key))
 
-                        :else
-                        drawer-map)
+                         :else
+                         drawer-map)
              ;; Extract values and apply remaining filtering
              docs (map second range-seq)]
          (fetch-from-docs docs only limit other-where sort-config skip))
@@ -281,25 +272,25 @@
 (defn fetch
   [dresser drawer only limit where sort-config skip]
   (db/with-result dresser
-    (let [drawer-map (get-in dresser [:db drawer])]
+    (let [drawer-map (get dresser drawer)]
       (fetch-optimized* drawer-map only limit where sort-config skip))))
 
 (defn all-drawers
   [dresser]
-  (db/with-result dresser (keys (:db dresser))))
+  (db/with-result dresser (keys dresser)))
 
 (defn delete-many
   [dresser drawer where]
   (db/tx-let [tx dresser]
-      [ids (-> (db/fetch tx drawer {:where where
-                                    :only  {:id :?}})
-               (db/update-result #(mapv :id %)))]
-    (-> (update-in tx [:db drawer] #(apply dissoc % ids))
-        (db/with-result {:deleted-count (count ids)}))))
+             [ids (-> (db/fetch tx drawer {:where where
+                                           :only {:id :?}})
+                      (db/update-result #(mapv :id %)))]
+             (-> (update-in tx [drawer] #(apply dissoc % ids))
+                 (db/with-result {:deleted-count (count ids)}))))
 
 (defn assoc-at
   [dresser drawer id ks data]
-  (-> (update-in dresser [:db drawer]
+  (-> (update-in dresser [drawer]
                  (fn [drawer-map]
                    (let [drawer-map (or drawer-map (sorted-map-by lax-compare))
                          doc (get drawer-map id)
@@ -312,48 +303,51 @@
 
 (defn drop-drawer
   [dresser drawer]
-  (-> (update dresser :db dissoc drawer)
+  (-> (dissoc dresser drawer)
       (db/with-result drawer)))
 
 (defn do-transact
   [dresser f opts]
-  (let [tx (f (assoc dresser :transact true))]
-    (assoc tx :transact false)))
-
+  (-> dresser
+      (vary-meta assoc ::in-tx? true)
+      (f)
+      (vary-meta dissoc ::in-tx?))
+  ;; (let [tx (f (assoc dresser :transact true))]
+  ;;   (assoc tx :transact false))
+  )
 
 (defn fetch-by-id
   [dresser drawer id only where]
   (db/with-result dresser
-    (some-> (get-in dresser [:db drawer id])
+    (some-> (get-in dresser [drawer id])
             (where? where)
             (take-from only))))
 
 ;; Hashmap implementation methods provided via metadata
-
 
 (defn build
   "Build a hashmap-based dresser from initial data."
   {:test #(dt/test-impl (fn [] (dt/no-tx-reuse (build))))}
   ([] (build {}))
   ([m]
-   (let [db-data (reduce-kv
+   (let [;; Process the user data directly without wrapping in :db
+         db-data (reduce-kv
                   (fn [acc drawer-name drawer-map]
                     (assoc acc drawer-name (into (sorted-map-by lax-compare) drawer-map)))
                   (sorted-map-by lax-compare)
                   m)
-         impl (-> {:db db-data}
+         ;; Create implementation map with user data directly at top level
+         impl (-> db-data ; User data becomes the base map
                   (with-meta
                     (merge opt/default-implementations
-                           {`dp/fetch          fetch
-                            `dp/all-drawers    all-drawers
-                            `dp/delete-many    delete-many
-                            `dp/assoc-at       assoc-at
-                            `dp/drop           drop-drawer
-                            `dp/transact       do-transact
-                            `dp/tx?            #(boolean (:transact %))
+                           {`dp/fetch fetch
+                            `dp/all-drawers all-drawers
+                            `dp/delete-many delete-many
+                            `dp/assoc-at assoc-at
+                            `dp/drop drop-drawer
+                            `dp/transact do-transact
+                            `dp/tx? (fn [this] (::in-tx? (meta this)))
                             ;; Optional optimization
-                            `dp/fetch-by-id    fetch-by-id})))]
+                            `dp/fetch-by-id fetch-by-id})))]
      (-> (db/make-dresser impl true)
-         ;; Provide implementations via metadata
-
          (db/with-temp-dresser-id)))))
