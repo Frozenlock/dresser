@@ -49,12 +49,13 @@
                          (map? map-or-dresser) (hm/build map-or-dresser)
                          :else (hm/build))
          impl (-> {:*source (atom inner-dresser)
-                   :lock (gensym "lock-")}
+                   :lock    (gensym "lock-")}
                   (with-meta
                     (merge (meta inner-dresser)
-                           {`dp/transact       do-transact
-                            `dp/tx?            #(dp/tx? @(:*source %))
-                            `dp/start          do-start
-                            `dp/stop           do-stop})))]
+                           {`dp/transact   do-transact
+                            `dp/tx?        #(dp/tx? @(:*source %))
+                            `dp/start      do-start
+                            `dp/stop       do-stop
+                            `dp/immutable? (fn [_] false)})))]
      (-> (db/make-dresser impl false)
          (db/with-temp-dresser-id)))))

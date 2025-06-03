@@ -1,7 +1,8 @@
 (ns dresser.extensions.async-tx
   (:require [dresser.base :as db]
             [dresser.extension :as ext]
-            [dresser.protocols :as dp])
+            [dresser.protocols :as dp]
+            [dresser.test :as dt])
   (:import (java.util.concurrent LinkedBlockingQueue TimeUnit)))
 
 (defprotocol IAsyncTx
@@ -299,13 +300,18 @@
                           (when (and client-id (:initialized? @*tx-state))
                             (swap! *tx-state update :clients conj client-id))
                           tx))
-                tx? (get m `dp/tx?)]
+                tx? (get m `dp/tx?)
+                immutable? (dp/get-or-fundamental m `dp/immutable?)]
 
             (merge
              m
              {`-start-tx  start
               `-end-tx    end-tx
               `-cancel-tx cancel
+              `dp/immutable? (fn [this]
+                               (if-some [init? (:initialized? @*tx-state)]
+                                 (not init?)
+                                 (immutable? this)))
               `dp/transact
               (fn [tx f opts]
                 (let [tx (vary-meta tx assoc `dp/tx? tx?)

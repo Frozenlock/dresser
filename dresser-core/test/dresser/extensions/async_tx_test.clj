@@ -71,10 +71,22 @@
          clojure.lang.ExceptionInfo #"Boom!"
          (db/add! d1 :users {:name "Bob"})))))
 
+(deftest immutability
+  (let [dresser (atx/async-tx (immutable-dresser))
+        _ (is (true? (db/immutable? dresser)) "Sanity check")
+        tx (atx/start-tx! dresser)
+        _ (is (not (db/immutable? tx)) "No longer immutable when async transaction started")
+        ended-tx (atx/end-tx! tx)
+        _ (is (true? (db/immutable? ended-tx)) "Back to immutable when async transaction ended")
+
+        tx (atx/start-tx! dresser)
+        _ (is (not (db/immutable? tx)) "No longer immutable when async transaction started")
+        cancel-tx (atx/end-tx! tx)
+        _ (is (true? (db/immutable? cancel-tx)) "Back to immutable when async transaction cancelled")]))
+
 (deftest complex-tx
   (doseq [dresser [(immutable-dresser)
-                   ;(mutable-dresser)
-                   ]]
+                   (mutable-dresser)]]
     (let [d1 (atx/async-tx dresser)
           d2 (atx/async-tx (atx/async-tx dresser))
           *d1-committed? (promise)]
