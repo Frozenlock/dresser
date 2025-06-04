@@ -17,9 +17,7 @@
   (with-meta {:db data}
     {`dp/fetch my-fetch-fn
      `dp/transact my-transact-fn})
-  ```
-
-  Base methods (temp-data, immutable?) are provided automatically by make-dresser."
+  ```"
   (:refer-clojure :exclude [drop]))
 
 ;;; Extendable / wrappable protocols
