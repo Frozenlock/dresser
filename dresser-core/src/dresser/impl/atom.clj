@@ -38,18 +38,25 @@
 
 
 ;; Atom implementation methods provided via metadata
+(defn- atom?
+  [x]
+  (instance? clojure.lang.IDeref x))
 
 (defn build
-  "Build an IDresser atom from a map or from another IDresser object."
+  "Build a Dresser atom from a map, an atom, or from another Dresser."
   {:test (fn []
            (dt/test-impl #(dt/no-tx-reuse (build))))}
   ([] (build nil))
   ([map-or-dresser]
-   (let [inner-dresser (cond
-                         (db/dresser? map-or-dresser) map-or-dresser
-                         (map? map-or-dresser) (hm/build map-or-dresser)
-                         :else (hm/build))
-         impl (-> {:*source (atom inner-dresser)
+   (let [inner-dresser
+         (cond
+           (db/dresser? map-or-dresser) map-or-dresser
+           (map? map-or-dresser) (hm/build map-or-dresser)
+           (atom? map-or-dresser) (swap! map-or-dresser hm/build)
+           :else (hm/build))
+         impl (-> {:*source (if (atom? map-or-dresser)
+                              map-or-dresser
+                              (atom inner-dresser))
                    :lock    (gensym "lock-")}
                   (with-meta
                     (merge (meta inner-dresser)
