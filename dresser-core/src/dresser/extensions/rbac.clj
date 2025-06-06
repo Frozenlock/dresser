@@ -28,7 +28,6 @@
 
                     mbr/role-reader {:read true}})
 
-
 (defn- deep-merge [& maps]
   (let [merge-fn (fn this-merge [& args]
                    (if (every? map? args)
@@ -68,8 +67,6 @@
                    :else (assoc acc k v))))
              {} request))
 
-
-
 (defn permitted?
   "Determines if a request is collectively permitted by combining permissions
   from a sequence of permission maps. Permissions are considered cumulatively
@@ -92,7 +89,6 @@
                      (reduced nil)
                      m)))
                request perm-maps)))
-
 
 ;; ----------------
 ;; This section allows for each document to define its own roles. Is
@@ -117,8 +113,6 @@
                     (dissoc role->permissions
                             (keys default-roles)))))
 ;; ----------------
-
-
 
 (defn set-guest-roles!
   "Sets the roles for non-member of the document."
@@ -145,6 +139,19 @@
       (db/with-result tx [::guest])
       (mbr/members-of-group-with-roles tx grp-ref roles-w-perm))))
 
+(defn- with-cache
+  "Caches the result of f in temp-data under cache-key.
+  If cache-key is nil, simply call (f tx)."
+  [tx cache-key f]
+  (if-not cache-key
+    (f tx)
+    (if-let [cached (db/temp-data tx [cache-key])]
+      (db/with-result tx cached)
+      (let [[tx result] (db/dr (f tx))]
+        (-> tx
+            (db/assoc-temp-data cache-key result)
+            (db/with-result result))))))
+
 (defn permission-chain
   "Checks if member has the requested permission for the group. If not,
   recursively checks if he's a member of the valid member groups.
@@ -152,29 +159,36 @@
 
   The first item in the collection is the provided ref and the last is
   the ref that has the permission for grp-ref.
-  Ex: usr1 :write for Acme -> [urs1 shell-company acme-owners]"
-  [dresser grp-ref request member-ref]
-  (db/tx-let [tx dresser]
-      [valid-members (members-with-permission tx grp-ref request)]
-    (if (or (some #{member-ref ::guest} valid-members)) ; Found member?
-      (db/with-result tx [member-ref])
-      ;; If the member isn't found directly, recursively check the groups
-      (loop [tx tx, refs (remove #{member-ref} valid-members)]
-        (if (empty? refs)
-          (db/with-result tx [])
-          (let [ref (first refs)
-                [tx chain] (db/dr (permission-chain tx ref request member-ref))]
-            (if (seq chain)
-              (db/with-result tx (conj chain ref))
-              (recur tx (next refs)))))))))
+  Ex: usr1 :write for Acme -> [urs1 shell-company acme-owners]
 
+  A cache key can be provided to store the recursive results in
+  temp-data, but it must be for a very limited scope where
+  modifications are impossible and it must be manually removed."
+  ([dresser grp-ref request member-ref]
+   (permission-chain dresser grp-ref request member-ref nil))
+  ([dresser grp-ref request member-ref cache-key]
+   (with-cache dresser (when cache-key
+                         [cache-key [:pchain grp-ref request member-ref]])
+     (fn [tx]
+       (db/tx-let [tx dresser]
+           [valid-members (members-with-permission tx grp-ref request)]
+         (if (or (some #{member-ref ::guest} valid-members)) ; Found member?
+           (db/with-result tx [member-ref])
+           ;; If the member isn't found directly, recursively check the groups
+           (loop [tx tx, refs (remove #{member-ref} valid-members)]
+             (if (empty? refs)
+               (db/with-result tx [])
+               (let [ref (first refs)
+                     [tx chain] (db/dr (permission-chain tx ref request member-ref cache-key))]
+                 (if (seq chain)
+                   (db/with-result tx (conj chain ref))
+                   (recur tx (next refs))))))))))))
 
 ;;;;;;;;;;;;;;;;;;;
 
 ;; Pseudo permissions
 (def -always nil)
 (def -never {::never true})
-
 
 ;; TODO: add another permission for using `where`?  There is a
 ;; potential for leaking information by repeatedly using a the `where`
@@ -203,39 +217,37 @@
               `dp/transact       -always
 
               ;; optional implementations
-              `dp/fetch-by-id        (fn [drawer id only where]
-                                       {:read (assoc-in {} [drawer id] only)})
-              `dp/update-at          (fn [drawer id ks _f _args]
-                                       (let [request (assoc-in {} (into [drawer id] ks) :?)]
-                                         {:write request
-                                          :read  request}))
-              `dp/add                (fn [drawer _data]
-                                       {:add drawer})
-              `dp/all-ids            never-f
-              `dp/assoc-at           (fn [drawer id ks _data]
-                                       {:write (assoc-in {} (into [drawer id] ks) :?)})
-              `dp/dissoc-at          (fn [drawer id ks dissoc-ks]
-                                       {:write (assoc-in {} (into [drawer id] ks)
-                                                         (into {} (for [k dissoc-ks]
-                                                                    [k :?])))})
-              `dp/drop               never-f
-              `dp/gen-id             never-f
-              `dp/get-at             (fn [drawer id ks only]
-                                       {:read (assoc-in {} (into [drawer id] ks) (or only :?))})
-              `dp/has-drawer?        never-f
-              `dp/upsert-many        (fn [drawer _docs]
-                                       {:write {drawer :?}})
-              `dp/dresser-id         -always
-              `dp/rename-drawer      never-f
-              `dp/drawer-id          -always
-              `dp/drawer-key         -always
-              `dp/start              -always
-              `dp/stop               -always
-              `dp/started?           -always
-              `dp/fetch-count        never-f}]
+              `dp/fetch-by-id   (fn [drawer id only where]
+                                  {:read (assoc-in {} [drawer id] only)})
+              `dp/update-at     (fn [drawer id ks _f _args]
+                                  (let [request (assoc-in {} (into [drawer id] ks) :?)]
+                                    {:write request
+                                     :read  request}))
+              `dp/add           (fn [drawer _data]
+                                  {:add drawer})
+              `dp/all-ids       never-f
+              `dp/assoc-at      (fn [drawer id ks _data]
+                                  {:write (assoc-in {} (into [drawer id] ks) :?)})
+              `dp/dissoc-at     (fn [drawer id ks dissoc-ks]
+                                  {:write (assoc-in {} (into [drawer id] ks)
+                                                    (into {} (for [k dissoc-ks]
+                                                               [k :?])))})
+              `dp/drop          never-f
+              `dp/gen-id        never-f
+              `dp/get-at        (fn [drawer id ks only]
+                                  {:read (assoc-in {} (into [drawer id] ks) (or only :?))})
+              `dp/has-drawer?   never-f
+              `dp/upsert-many   (fn [drawer _docs]
+                                  {:write {drawer :?}})
+              `dp/dresser-id    -always
+              `dp/rename-drawer never-f
+              `dp/drawer-id     -always
+              `dp/drawer-key    -always
+              `dp/start         -always
+              `dp/stop          -always
+              `dp/started?      -always
+              `dp/fetch-count   never-f}]
     m->p))
-
-
 
 (defn- doc-request
   "Takes a (global) request and transform it into a specific doc request.
@@ -255,14 +267,12 @@
 ;; new document. For example, a user could be a member of 2 orgs. In
 ;; this scenario, in which one should a new project be added?
 
-
 (defn with-doc-adder
   "`adder-ref` will become the admin of any added document. Documents
   can only be added in `valid-drawers`."
   [dresser adder-ref]
   (db/update-temp-data dresser assoc ::doc-adder
-                       {:adder-ref     adder-ref}))
-
+                       {:adder-ref adder-ref}))
 
 (defn- post-add
   [tx drawer-key member-ref]
@@ -291,7 +301,6 @@
       (-> (mbr/upsert-group-member! tx new-doc-ref adder-ref [mbr/role-admin])
           (db/with-result new-doc-id)))))
 
-
 ;; The 'fetch' function is peculiar; it needs to search through all
 ;; the docs. To not break the function while still throwing in case of
 ;; an unauthorized result, we allow a normal 'fetch' and then validate
@@ -306,6 +315,7 @@
         ?only-with-id (when (and only (not (:id only)))
                         (assoc only :id true))
         [tx1 docs] (db/dr (method tx drawer (or ?only-with-id only) limit where sort skip))
+        cache-key (gensym)
         tx2 (reduce (fn [tx {:keys [id]}]
                       (let [request (binding [*doc-id* id]
                                       (request-fn drawer only limit where sort skip))
@@ -315,7 +325,7 @@
                                                  (= member-ref grp-ref))
                                           [tx [:itself]] ; member can access itself
                                           (db/dr (permission-chain tx grp-ref doc-r
-                                                                   member-ref)))]
+                                                                   member-ref cache-key)))]
                         (if (empty? pchain)
                           (throw (ex-info "Missing permission"
                                           {:by      member-ref
@@ -325,6 +335,7 @@
                                            :type    ::permission}))
                           tx)))
                     tx1 docs)
+        tx2 (db/update-temp-data tx2 dissoc cache-key)
 
         ;; Remove ID if not requested
         docs (if ?only-with-id
@@ -333,13 +344,13 @@
                docs)]
     (db/with-result tx2 docs)))
 
-
 (defn check-and-delete
   [member-ref method-sym provided-permissions method tx args]
   (let [[drawer where] args
         request-fn (method->request-fn method-sym)
         ;; Do we have permission for the entire drawer?
         early-permit? (permitted? provided-permissions {:delete {drawer :?}})
+        cache-key (gensym)
         tx (if early-permit?
              tx
              (db/fetch-reduce
@@ -354,7 +365,7 @@
                                            (= member-ref grp-ref))
                                     [tx [:itself]] ; member can access itself
                                     (db/dr (permission-chain tx grp-ref doc-r
-                                                             member-ref)))]
+                                                             member-ref cache-key)))]
                   (if (empty? pchain)
                     (throw (ex-info "Missing permission"
                                     {:by      member-ref
@@ -365,7 +376,8 @@
                     tx)))
               {:where      where
                :chunk-size 100
-               :only       {:id :?}}))]
+               :only       {:id :?}}))
+        tx (db/update-temp-data tx dissoc cache-key)]
     (method tx drawer where)))
 
 (defn- default-check
@@ -408,7 +420,6 @@
         (if (empty? pchain)
           (throw (make-error))
           tx)))))
-
 
 (defn permission-wrapper
   [member-ref method-sym provided-permissions wrapper-id]
@@ -458,8 +469,6 @@
                       (cond-> (apply method tx args)
                         (= method-sym `dp/add) (post-add drawer member-ref)))
                   (db/update-temp-data dissoc wrapper-id)))))))))
-
-
 
 (ext/defext enforce-rbac
   "Dresser methods touching a document other than `member-ref` will
