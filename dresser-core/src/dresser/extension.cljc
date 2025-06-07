@@ -8,7 +8,7 @@
 
 (defn assert-ext
   [dresser ext]
-  (let [{::keys [extensions]} (db/temp-data dresser)]
+  (let [{::keys [extensions]} (db/temp-get dresser)]
     (assert (some #{ext} extensions)
             (str "Missing extension " ext))))
 
@@ -17,7 +17,7 @@
   [dresser ext-key {:keys [deps wrap-configs init-fn throw-on-reuse?]}]
   ;; Extensions should not apply more than once.
   (let [init-fn' (or init-fn identity)
-        already-used? (some #{ext-key} (:extensions (db/temp-data dresser)))]
+        already-used? (some #{ext-key} (:extensions (db/temp-get dresser)))]
     (cond (and already-used? throw-on-reuse?)
           (throw (ex-info "This extension can only be used once" {:extension ext-key}))
 
@@ -31,11 +31,11 @@
 (defmacro defext
   {:arglists     '([name doc-string? attr-map? {:deps [], :wrap-configs {}, :init-fn f, :throw-on-reuse? bool}])
    :doc          (str "Defines a wrapper, similar to `db/wrap`."
-                      "\n  "
-                      "Extensions in :deps will be added first."
-                      "\n  "
-                      "The wrapper will only apply itself once, but `init-fn` will always be called"
-                      "\n\n  " (:doc (meta #'wrap/build)))
+             "\n  "
+             "Extensions in :deps will be added first."
+             "\n  "
+             "The wrapper will only apply itself once, but `init-fn` will always be called"
+             "\n\n  " (:doc (meta #'wrap/build)))
    :style/indent [:defn]}
   [name & fdecl]
   ;; Complex, but it's a copy/past from 'defn'
@@ -61,7 +61,7 @@
 
 (comment
   (defext my-ext
-      "Some amazing extension"
+    "Some amazing extension"
     [abc]
     {:deps         []
      :wrap-configs {}})

@@ -11,7 +11,7 @@
 (defn do-transact
   [dresser f opts]
   (locking (:lock dresser)
-    (let [temp-data (db/temp-data dresser)
+    (let [temp-data (db/temp-get dresser)
           source @(:*source dresser)
           source' (-> (vary-meta source merge
                                  (dissoc (meta dresser)
@@ -26,7 +26,7 @@
                                         (db/with-temp-data source' nil))
               ;; Should never happen because of the lock.
               (throw (ex-info "Transaction failed" {})))]
-      (db/with-temp-data dresser (db/temp-data source')))))
+      (db/with-temp-data dresser (db/temp-get source')))))
 
 (defn do-start
   [dresser]

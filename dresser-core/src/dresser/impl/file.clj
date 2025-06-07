@@ -18,14 +18,14 @@
 (defn- modified?
   "Returns true if the dresser has been modified in the current transaction."
   [dresser]
-  (db/temp-data dresser [::modified?]))
+  (db/temp-get-in dresser [::modified?]))
 
 (defn- wrap-mutating-method
   "Wraps a mutating method to mark the dresser as modified."
   [method]
   (fn [dresser & args]
     (-> (apply method dresser args)
-        (db/assoc-temp-data ::modified? true))))
+        (db/temp-assoc ::modified? true))))
 
 (defn- wrap-transact-for-tracking
   "Wraps transact to reset the modified flag at transaction start."
@@ -34,7 +34,7 @@
     (transact-method dresser
                      (fn [tx]
                        ;; Reset modified flag at transaction start
-                       (f (db/assoc-temp-data tx ::modified? false)))
+                       (f (db/temp-assoc tx ::modified? false)))
                      opts)))
 
 (defn- with-modification-tracking
@@ -91,12 +91,12 @@
   data from the file."
   [tx filename deserializer]
   (db/tx-let [tx tx]
-      [_ (-> (db/all-drawers tx)
-             (db/reduce-tx db/drop!))
-       data (load-from-file filename deserializer)
-       load-drawer! (fn [tx [drawer id->docs]]
-                      (db/upsert-many! tx drawer (vals id->docs)))]
-    (db/reduce-tx tx load-drawer! data)))
+             [_ (-> (db/all-drawers tx)
+                    (db/reduce-tx db/drop!))
+              data (load-from-file filename deserializer)
+              load-drawer! (fn [tx [drawer id->docs]]
+                             (db/upsert-many! tx drawer (vals id->docs)))]
+             (db/reduce-tx tx load-drawer! data)))
 
 (defn wrap-transact
   [transact filename {:keys [force-reload? serializer deserializer]}]
@@ -130,12 +130,12 @@
                         (.delete (io/file temp-file)))]
     (try
       (dt/test-impl
-        #(do
-           (delete-file!)  ; Delete before each test creation
-           (dt/no-tx-reuse
-            (build temp-file (cond-> {:force-reload? true}
-                               serializer (assoc :serializer serializer)
-                               deserializer (assoc :deserializer deserializer))))))
+       #(do
+          (delete-file!) ; Delete before each test creation
+          (dt/no-tx-reuse
+           (build temp-file (cond-> {:force-reload? true}
+                              serializer (assoc :serializer serializer)
+                              deserializer (assoc :deserializer deserializer))))))
       (finally
         (delete-file!)))))
 

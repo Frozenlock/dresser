@@ -28,14 +28,14 @@
       (binding [*stack-level* (update *stack-level* method-sym (fnil inc 0))]
         (let [;; add the closing-fn to the stack
               tx (cond-> tx
-                   closing-fn (db/update-temp-data update-in path #((fnil conj []) % closing-fn)))
+                   closing-fn (db/temp-update-in path #((fnil conj []) % closing-fn)))
               ;; apply the method
               tx (apply method tx args)
               ;; retrieve the closing-fns stack
               cfs (when (= 1 (get *stack-level* method-sym)) ; back to the first outer layer
-                    (db/temp-data tx path))]
+                    (db/temp-get-in tx path))]
           (if (not-empty cfs)
-            (let [tx (db/update-temp-data tx update ::closing-fns dissoc method-sym)]
+            (let [tx (db/temp-update tx ::closing-fns dissoc method-sym)]
               (reduce (fn [tx' cf] (apply cf tx' args)) tx cfs))
             tx))))))
 

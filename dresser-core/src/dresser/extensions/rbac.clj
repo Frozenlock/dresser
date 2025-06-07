@@ -145,11 +145,11 @@
   [tx cache-key f]
   (if-not cache-key
     (f tx)
-    (if-let [cached (db/temp-data tx [cache-key])]
+    (if-let [cached (db/temp-get-in tx [cache-key])]
       (db/with-result tx cached)
       (let [[tx result] (db/dr (f tx))]
         (-> tx
-            (db/assoc-temp-data cache-key result)
+            (db/temp-assoc cache-key result)
             (db/with-result result))))))
 
 (defn permission-chain
@@ -212,7 +212,6 @@
               `dp/delete-many (fn [drawer _where]
                                 {:delete (assoc-in {} [drawer *doc-id*] :?)})
 
-              `dp/temp-data      -always
               `dp/with-temp-data -always
               `dp/transact       -always
 
@@ -271,8 +270,8 @@
   "`adder-ref` will become the admin of any added document. Documents
   can only be added in `valid-drawers`."
   [dresser adder-ref]
-  (db/update-temp-data dresser assoc ::doc-adder
-                       {:adder-ref adder-ref}))
+  (db/temp-assoc dresser ::doc-adder
+                 {:adder-ref adder-ref}))
 
 (defn- post-add
   [tx drawer-key member-ref]
@@ -281,7 +280,7 @@
     tx
     (let [new-doc-id (db/result tx)
           [tx new-doc-ref] (db/dr (refs/ref! tx drawer-key new-doc-id))
-          doc-adder (::doc-adder (db/temp-data tx))
+          doc-adder (::doc-adder (db/temp-get tx))
           {:keys [adder-ref]} doc-adder
           ;; We are within unrestricted access and must check
           ;; membership permissions manually
@@ -337,7 +336,7 @@
                                            :type    ::permission}))
                           tx)))
                     tx1 docs)
-        tx2 (db/update-temp-data tx2 dissoc cache-key)
+        tx2 (db/temp-dissoc tx2 cache-key)
 
         ;; Remove ID if not requested
         docs (if ?only-with-id
@@ -379,7 +378,7 @@
               {:where      where
                :chunk-size 100
                :only       {:id :?}}))
-        tx (db/update-temp-data tx dissoc cache-key)]
+        tx (db/temp-dissoc tx cache-key)]
     (method tx drawer where)))
 
 (defn- default-check
@@ -429,9 +428,9 @@
     (fn [method]
       (fn [tx & args]
         ;; Do not check permission for nested methods (implementations)
-        (if (db/temp-data tx [wrapper-id])
+        (if (db/temp-get-in tx [wrapper-id])
           (apply method tx args)
-          (let [tx (db/assoc-temp-data tx wrapper-id true)
+          (let [tx (db/temp-assoc tx wrapper-id true)
                 [drawer & rargs] args
                 pass (some #{drawer} (db/system-drawers tx))
                 ?request (if pass
@@ -470,7 +469,7 @@
               (-> (or fetched-tx
                       (cond-> (apply method tx args)
                         (= method-sym `dp/add) (post-add drawer member-ref)))
-                  (db/update-temp-data dissoc wrapper-id)))))))))
+                  (db/temp-dissoc wrapper-id)))))))))
 
 (ext/defext enforce-rbac
   "Dresser methods touching a document other than `member-ref` will

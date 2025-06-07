@@ -60,8 +60,6 @@
   ([dresser opts]
    (-end-tx dresser (update opts :result? #(or % false)))))
 
-
-
 (defn- process-transaction
   [tx tx-id queue opts *tx]
   (loop [tx tx]
@@ -136,7 +134,7 @@
               (handle-transaction-result ended-dresser)))
           (catch Exception e
             (handle-transaction-error e *tx-state queue dresser tx-id)))))
-       dresser))
+    dresser))
 
 (defn- execute-transaction-step
   [tx f tx-id *result *tx queue]
@@ -166,13 +164,13 @@
 
       :else
       (let [f (bound-fn [tx]
-                (let [ret (f (db/with-temp-data tx (db/temp-data dresser)))]
+                (let [ret (f (db/with-temp-data tx (db/temp-get dresser)))]
                   ret))
             *result (promise)]
-        (.put queue {:tx-fn (fn [tx]
+        (.put queue {:tx-fn        (fn [tx]
                               (execute-transaction-step tx f tx-id *result *tx queue))
                      :init-dresser dresser
-                     :step step})
+                     :step         step})
         (let [new-tx (deref *result timeout-ms {::err (ex-info "Result timeout" {:tx-id tx-id})})]
           (if-let [err (::err new-tx)]
             (if-let [*dresser (::*dresser (ex-data err))]
@@ -181,7 +179,7 @@
             (if (db/immutable? dresser)
               new-tx
               (-> dresser
-                  (db/with-temp-data (db/temp-data new-tx))
+                  (db/with-temp-data (db/temp-get new-tx))
                   (db/with-result (db/result new-tx))))))))))
 
 (ext/defext async-tx
@@ -216,7 +214,7 @@
    (end-tx! tx)
    ```"
   []
-  {                                     ;:throw-on-reuse? true
+  {;:throw-on-reuse? true
    :init-fn
    (fn [dresser]
      (let [*tx-state (atom {})
@@ -305,9 +303,9 @@
 
             (merge
              m
-             {`-start-tx  start
-              `-end-tx    end-tx
-              `-cancel-tx cancel
+             {`-start-tx     start
+              `-end-tx       end-tx
+              `-cancel-tx    cancel
               `dp/immutable? (fn [this]
                                (if-some [init? (:initialized? @*tx-state)]
                                  (not init?)

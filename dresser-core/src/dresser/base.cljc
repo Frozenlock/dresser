@@ -19,7 +19,6 @@
         (into fundamental-impl)
         (with-meta (merge base-methods (meta fundamental-impl))))))
 
-
 (defn immutable?
   "Returns true if the dresser is immutable."
   [dresser]
@@ -30,11 +29,21 @@
   [dresser]
   (dp/tx? dresser))
 
-(defn temp-data
+(defn temp-get
+  "Get temp data. Similar to `clojure.core/get`."
   ([dresser]
    (dp/temp-data dresser))
-  ([dresser ks]
-   (get-in (temp-data dresser) ks)))
+  ([dresser key]
+   (get (temp-get dresser) key))
+  ([dresser key default]
+   (get (temp-get dresser) key default)))
+
+(defn temp-get-in
+  "Get temp data at path. Similar to `clojure.core/get-in`."
+  ([dresser path]
+   (get-in (temp-get dresser) path))
+  ([dresser path default]
+   (get-in (temp-get dresser) path default)))
 
 (defn with-temp-data
   [dresser data]
@@ -42,20 +51,40 @@
 
 (defn update-temp-data
   [dresser f & args]
-  (->> (apply f (temp-data dresser) args)
+  (->> (apply f (temp-get dresser) args)
        (with-temp-data dresser)))
 
-(defn assoc-temp-data
+(defn temp-assoc
+  "Associates a key with a value in temp data. Similar to `clojure.core/assoc`."
   ([dresser key val]
-   (update-temp-data dresser assoc key val))
+   (with-temp-data dresser (assoc (dp/temp-data dresser) key val)))
   ([dresser key val & kvs]
-   (let [ret (assoc-temp-data dresser key val)]
+   (let [ret (temp-assoc dresser key val)]
      (if kvs
        (if (next kvs)
          (recur ret (first kvs) (second kvs) (nnext kvs))
          (throw (ex-info "uneven number of arguments for keys/vals")))
        ret))))
 
+(defn temp-assoc-in
+  "Associates a value at path in temp data. Similar to `clojure.core/assoc-in`."
+  [dresser path value]
+  (with-temp-data dresser (assoc-in (dp/temp-data dresser) path value)))
+
+(defn temp-update
+  "Updates a key in temp data with a function. Similar to `clojure.core/update`."
+  [dresser key f & args]
+  (with-temp-data dresser (apply update (dp/temp-data dresser) key f args)))
+
+(defn temp-update-in
+  "Updates a value at path in temp data with a function. Similar to `clojure.core/update-in`."
+  [dresser path f & args]
+  (with-temp-data dresser (apply update-in (dp/temp-data dresser) path f args)))
+
+(defn temp-dissoc
+  "Removes keys from temp data. Similar to `clojure.core/dissoc`."
+  [dresser & keys]
+  (with-temp-data dresser (apply dissoc (dp/temp-data dresser) keys)))
 
 (defn start
   "Starts the dresser. Returns the started dresser."
@@ -67,27 +96,25 @@
   [dresser]
   (dp/stop dresser))
 
-
 (defn result
   "Returns the result currently stored in the transaction."
   [dresser]
-  (:result (temp-data dresser)))
+  (temp-get-in dresser [:result]))
 
 (defn with-result
   "Inserts a result into the transaction."
   [dresser result]
-  (update-temp-data dresser assoc :result result))
+  (temp-assoc dresser :result result))
 
 (defn temp-dresser-id
   "Temporary (in-memory) dresser ID. Doesn't require a transaction."
   [dresser]
-  (temp-data dresser [:temp-id]))
+  (temp-get-in dresser [:temp-id]))
 
 (defn with-temp-dresser-id
   ([dresser] (with-temp-dresser-id dresser (str (gensym "dresser-"))))
   ([dresser id]
-   (update-temp-data dresser assoc :temp-id id)))
-
+   (temp-assoc dresser :temp-id id)))
 
 (defn transact!
   "Evaluates the provided function inside a transaction.
@@ -100,10 +127,10 @@
   ([dresser f {:keys [result?] :as opts}]
    (assert (dresser? dresser) "Transact first argument should be a dresser")
    (if (tx? dresser)
-     (f dresser)  ; Already in transaction
+     (f dresser) ; Already in transaction
      (let [tx (dp/transact dresser f opts)]
        (if result?
-         (result tx)    ; Extract and return result
+         (result tx) ; Extract and return result
          tx)))))
 
 (def drs-drawer
@@ -113,19 +140,17 @@
 (def drs-doc-id
   "drs-config")
 
-
 (defn system-drawers
   "Drawers that are important for 'basic' system operations.
   Most of the time they should be ignored by extensions."
   [dresser]
-  (-> (or (:drs-system-drawers (temp-data dresser))
+  (-> (or (temp-get dresser :drs-system-drawers)
           #{})
       (conj drs-drawer)))
 
 (defn with-system-drawers
   [dresser drawers]
-  (update-temp-data dresser update :drs-system-drawers #(into (or % #{}) drawers)))
-
+  (temp-update dresser :drs-system-drawers #(into (or % #{}) drawers)))
 
 (defmacro with-tx
   "Opens a transaction and binds it to tx-name before evaluating the body.
@@ -187,7 +212,6 @@
          ret#
          (with-result ~tx-name ret#)))))
 
-
 (defmacro tx->
   {:style/indent 1}
   [dresser & body]
@@ -208,7 +232,6 @@
   [dresser & body]
   `(transact! ~dresser (fn [tx#] (tx-> tx# ~@body)) {:result? false}))
 
-
 (defmacro txr->
   "Threads the result of each expression through the rest of the forms.
    The transaction (tx) is passed as the first argument to each form.
@@ -224,8 +247,6 @@
          ~bindings
        ~result)))
 
-
-
 ;; Wrap all the methods into functions. We need to intercept a few
 ;; methods anyway for varargs and some syntactic sugar.
 
@@ -233,7 +254,6 @@
   (str "\n\n"
        "  Note: If inside a transaction, the return value is stored in the result\n"
        "        field and returns the updated dresser object."))
-
 
 (defn all-drawers
   {:doc (str "Returns a sequence of all drawers keys." tx-note)}
@@ -394,9 +414,6 @@
 
 ;;;;;;
 
-
-
-
 ;;; query ops
 
 (def lt ::lt)
@@ -416,25 +433,18 @@
   (throw (ex-info "Unsupported query operation" {:op   op
                                                  :form form})))
 
-
-
-
 ;;;
-
-
 
 (defn dr
   "(Dresser and result) Returns a tuple of [dresser result]."
   [dresser]
   [dresser (result dresser)])
 
-
 (defn update-result
   "Apply f to the current dresser result,
   upserting the resulting value as the new result"
   [dresser f & args]
   (with-result dresser (apply f (result dresser) args)))
-
 
 (defn fetch-one
   ([dresser drawer]
@@ -547,7 +557,6 @@
                       coll)))
      dresser)))
 
-
 (defn tx-failure-ex
   "Use this to generate a transaction error."
   ([data] (tx-failure-ex data nil))
@@ -557,13 +566,11 @@
 (defn last-tx-failure
   "Returns the last transaction failure data, if any."
   [dresser]
-  (temp-data dresser [:last-tx-failure]))
+  (temp-get-in dresser [:last-tx-failure]))
 
 (defn with-last-tx-failure
   [dresser data]
-  (update-temp-data dresser assoc :last-tx-failure data))
-
-
+  (temp-assoc dresser :last-tx-failure data))
 
 (defn to-edn
   "Returns a simple hashmap (EDN) version of the dresser."
@@ -579,7 +586,6 @@
                  (with-result tx {})
                  drawers)]
     tx))
-
 
 ;; LEXICAL ENCODING
 ;;
@@ -624,7 +630,6 @@
 ;;   Length 3721+:    "zz1z..." to "zzyz..."    (two z prefixes)
 ;;   And so on recursively...
 
-
 (def ^:private lexical-chars
   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
 
@@ -638,7 +643,6 @@
 (def ^:private lexical-separator
   "Character which comes after the lexical-chars-enc."
   (str (last lexical-chars)))
-
 
 (def lexical-max
   "Similar in purpose to Integer/MAX_VALUE, but for sorting strings."

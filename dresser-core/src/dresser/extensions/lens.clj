@@ -48,9 +48,9 @@
    (add! lens (get-drawer lens) doc))
   ([dresser drawer doc]
    (db/tx-let [tx dresser]
-       [doc-id (db/add! tx drawer doc)]
-     (set-ref! tx {:drawer drawer
-                   :doc-id doc-id}))))
+              [doc-id (db/add! tx drawer doc)]
+              (set-ref! tx {:drawer drawer
+                            :doc-id doc-id}))))
 
 (defn get-at
   ([lens] (get-at lens [] nil))
@@ -127,22 +127,21 @@
                             {:dresser-or-lens dresser-or-lens
                              :path-or-lens    path-or-lens})))))
 
-
 (ext/defext lenses
   "A dresser variation which can contain a reference to a document or
 subdocument."
   []
   {:deps    []
    :init-fn #(vary-meta % merge {`-ref     (fn [dresser]
-                                               (db/temp-data dresser [::ref]))
+                                         (db/temp-get-in dresser [::ref]))
                                  `-set-ref (fn [dresser ref]
-                                               (db/assoc-temp-data dresser ::ref ref))})})
+                                             (db/temp-assoc dresser ::ref ref))})})
 
 (comment
 
   (require '[dresser.impl.hashmap :as hm])
 
   (db/raw-> (hm/build)
-    (lenses)
-    (add! :users {:name "Bob", :address {:street 100}})
-    (focus [:address])))
+            (lenses)
+            (add! :users {:name "Bob", :address {:street 100}})
+            (focus [:address])))

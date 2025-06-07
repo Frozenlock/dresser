@@ -115,17 +115,17 @@
         tx-wrapper (let [tx-id (gensym "tx-")]
                      {:wrap (fn [m]
                               (fn [tx f opts]
-                                (let [tx-lvl (or (db/temp-data tx [tx-id]) 1)]
-                                  (-> tx (db/update-temp-data update tx-id (fnil inc 0))
+                                (let [tx-lvl (or (db/temp-get-in tx [tx-id]) 1)]
+                                  (-> tx (db/temp-update tx-id (fnil inc 0))
                                       (db/update-result conj (str "tx-enter-" tx-lvl))
                                       (m f opts)))))
                       :closing
                       (fn [tx f opts]
-                        (let [tx-lvl (or (db/temp-data tx [tx-id]) 1)
-                              tx (-> (db/assoc-temp-data tx tx-id (dec tx-lvl))
+                        (let [tx-lvl (or (db/temp-get-in tx [tx-id]) 1)
+                              tx (-> (db/temp-assoc tx tx-id (dec tx-lvl))
                                      (db/update-result conj (str "tx-leave-" tx-lvl)))]
                           (if (= tx-lvl 1)
-                            (db/update-temp-data tx dissoc tx-id)
+                            (db/temp-dissoc tx tx-id)
                             tx)))})
         add-wraper-fn (fn [id apply-method?]
                         {:wrap    (fn [m]
@@ -143,5 +143,5 @@
                       `dp/transact tx-wrapper})
                     (wrap/build
                      {`dp/add (add-wraper-fn 2 true)}))]
-      (is (= ["tx-leave-1" "close-1" "close-2" "wrap-2" "wrap-1" "tx-enter-1"]
-             (db/add! dresser :test {})))))
+    (is (= ["tx-leave-1" "close-1" "close-2" "wrap-2" "wrap-1" "tx-enter-1"]
+           (db/add! dresser :test {})))))
