@@ -45,7 +45,6 @@
                  (db/with-result tx (conj (or refs []) new-ref))))
              tx (range n)))))
 
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (deftest missing-permissions
@@ -99,9 +98,6 @@
         (is (empty? (rbac/missing-permissions perms request-address-street-zip)))
         (is (not-empty (rbac/missing-permissions perms request-address)))))))
 
-
-
-
 (deftest permitted?
   (testing "Single map, simple permissions"
     (is (rbac/permitted? [{:read true, :write false}] {:read :?}))
@@ -126,9 +122,6 @@
       (is (rbac/permitted? [perm1 perm2] request))
       (is (not (rbac/permitted? [perm1] request))))))
 
-
-
-
 (deftest permission-chain
   (let [dresser (test-dresser)
         dresser (db/raw-> dresser (add-groups! 5))
@@ -141,7 +134,7 @@
         (mbr/upsert-group-member! p1 grp1 [:owner])
         (dt/is-> (rbac/permission-chain p1 {:write true} grp1) (= [grp1]))
 
-        (mbr/upsert-group-member! p1 grp1 [:visitor])  ; <- undefined role
+        (mbr/upsert-group-member! p1 grp1 [:visitor]) ; <- undefined role
         (dt/is-> (rbac/permission-chain p1 {:write true} grp1) (= [])))
 
       (dt/testing-> "Indirect permission"
@@ -192,7 +185,6 @@
         (dt/is-> (rbac/permission-chain p1 {:read true} usr1) (= [usr1 grp1]))
         (dt/is-> (rbac/permission-chain p1 {:wrong-permission true} usr1) (= []))))))
 
-
 (deftest guest-roles
   (let [dresser (test-dresser)
         dresser (db/raw-> dresser (add-groups! 5))
@@ -234,14 +226,13 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
 (deftest wrapped-rbac
   (let [dresser (test-dresser)
         [dresser [usr1 usr2]] (db/dr (db/raw-> dresser (add-groups! 2 :users)))
         [dresser [grp1 grp2 grp3]] (db/dr (db/raw-> dresser (add-groups! 3 :grps)))
         dresser (db/raw-> dresser
-                  (rbac/set-roles-permissions! grp1 {:owner {:read   true
-                                                             :write  true}})
+                  (rbac/set-roles-permissions! grp1 {:owner {:read  true
+                                                             :write true}})
                   (mbr/upsert-group-member! grp1 usr1 [:owner])
                   (rbac/set-roles-permissions! grp3 {:owner {:delete true}})
                   (mbr/upsert-group-member! grp3 usr1 [:owner]))]
@@ -293,6 +284,44 @@
         ;; It cannot 'escalate' its rights.
         (dt/is-> (mbr/upsert-group-member! grp2 usr1 [:owner])
                  (thrown-with-msg? clojure.lang.ExceptionInfo #"Missing permission"))))
+
+    (testing "Doc-adder with group as actor"
+      ;; This test validates the behavior change where groups can now act as doc-adders
+      ;; for themselves without requiring explicit self-permissions. The post-add function
+      ;; now checks if the actor is acting on behalf of itself.
+      (let [dresser (test-dresser)
+            [dresser [usr1 usr2]] (db/dr (db/raw-> dresser (add-groups! 2 :users)))
+            [dresser [grp1 grp2]] (db/dr (db/raw-> dresser (add-groups! 2 :grps)))
+            dresser (db/raw-> dresser
+                      (mbr/upsert-group-member! grp1 usr1 [:admin]))]
+        (testing "Group can add documents as doc-adder for itself"
+          (let [dresser-with-rbac (-> (rbac/with-doc-adder dresser grp1)
+                                      (rbac/enforce-rbac grp1 {:add :*}))]
+            (is (some? (db/add! dresser-with-rbac :docs {:name "test"}))
+                "Group can now act as doc-adder for itself (after post-add update)")))
+
+        (testing "Group can add documents when it has permission to itself"
+          (let [dresser-with-self-admin (db/raw-> dresser
+                                          (mbr/upsert-group-member! grp1 grp1 [:admin]))
+                dresser-with-rbac (-> (rbac/with-doc-adder dresser-with-self-admin grp1)
+                                      (rbac/enforce-rbac grp1 {:add :*}))]
+            (is (some? (db/add! dresser-with-rbac :docs {:name "test"}))
+                "Group with self-admin permission can add documents")))
+
+        (testing "User with admin permission can add documents on behalf of group"
+          (let [dresser-with-rbac (-> (rbac/with-doc-adder dresser grp1)
+                                      (rbac/enforce-rbac usr1 {:add :*}))]
+            (is (some? (db/add! dresser-with-rbac :docs {:name "test"}))
+                "User with admin permission on group can add documents")))
+
+        (testing "Other groups cannot use the doc-adder without permission"
+          (let [dresser-with-rbac (-> (rbac/with-doc-adder dresser grp1)
+                                      (rbac/enforce-rbac grp2 {:add :*}))]
+            (is (thrown-with-msg?
+                 clojure.lang.ExceptionInfo
+                 #"Missing permission"
+                 (db/add! dresser-with-rbac :docs {:name "test"}))
+                "Other groups without permission cannot use the doc-adder")))))
 
     (testing "Fetch"
       (let [user1-data {:id "user1", :name "user1"}

@@ -285,7 +285,7 @@
           {:keys [adder-ref]} doc-adder
           ;; We are within unrestricted access and must check
           ;; membership permissions manually
-          mbr-request {:write {:drs_memberships {:member-of {adder-ref :?}}}}
+          mbr-request {:write {:_relations-virtual {adder-ref :?}}}
           error-fn (fn [message]
                      (ex-info message
                               {:by      member-ref
@@ -294,7 +294,9 @@
                                :target  adder-ref
                                :type    ::permission}))
           _ (when-not adder-ref (throw (error-fn "Missing document adder reference")))
-          [tx pchain] (db/dr (permission-chain tx adder-ref mbr-request member-ref))]
+          [tx pchain] (if (= adder-ref member-ref)
+                        [tx [:itself]] ; member can access itself
+                        (db/dr (permission-chain tx adder-ref mbr-request member-ref)))]
       (when (empty? pchain)
         (throw (error-fn "Missing permission")))
 
@@ -409,7 +411,7 @@
             [rel-id y] (first rel-id->y)
             [target-drawer-id doc-id] (map rel/decode (str/split rel-id (re-pattern rel/separator) 2))
             [tx target-drawer-key] (db/dr (d-reg/drawer-key tx target-drawer-id))
-            new-req {op {target-drawer-key {doc-id {:fake-relations y}}}}
+            new-req {op {target-drawer-key {doc-id {:_relations-virtual y}}}}
             [_old-drawer _old-id & new-args] args]
         (default-check member-ref method-sym method tx [target-drawer-key doc-id new-args] new-req))
 
