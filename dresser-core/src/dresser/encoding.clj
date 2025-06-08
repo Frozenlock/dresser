@@ -1,7 +1,6 @@
 (ns dresser.encoding
   "Shared encoding/decoding utilities for dresser implementations"
-  (:require [clojure.string :as str]
-            [clojure.walk :as walk])
+  (:require [clojure.string :as str])
   (:import (java.util Base64)))
 
 ;; Record encoding/decoding - shared across implementations
@@ -20,7 +19,11 @@
   If the record namespace is not loaded, returns the normal map.
   Non-maps are returned unchanged."
   [m]
-  (or (when-let [record-name (and (map? m) (get m "_drs-record"))]
+  (or (when-let [record-name (and (map? m)
+                                  ;; Could throw on a sorted map if
+                                  ;; keys are of different type.
+                                  (not (sorted? m))
+                                  (get m "_drs-record"))]
         (let [clean-map (dissoc m "_drs-record")
               last-dot (str/last-index-of record-name ".")
               namespace (-> (subs record-name 0 last-dot)
@@ -49,4 +52,3 @@
   (if (and (map? x) (:_drs-bytes x))
     (.decode (Base64/getDecoder) (:_drs-bytes x))
     x))
-
