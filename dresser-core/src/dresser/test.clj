@@ -225,29 +225,42 @@
       (testing "only keywords as keys"
         ;; A naive serialization might miss the different key ordering
         (let [impl (impl-f)
-              m1 {{:a 1, :b 2, :c #{"a" "b"}} "map1"}
-              m2 {{:b 2, :a 1, :c #{"b" "a"}} "map2"}]
+              ;; Store hashmap
+              m1-key (hash-map :a 1, :b 2, :c #{"a" "b"})
+              m1 {m1-key "map1"}
+              ;; Force difference orders
+              m1-key2 (array-map :b 2, :a 1, :c #{"a" "b"})
+              m2 {(array-map :c #{"a" "b"}, :b 2, :a 1) "map2"}]
           (db/tx-> impl
-            (db/add! :drawer m1)
-            (db/add! :drawer m2)
-            (is-> (db/fetch :drawer {:only {{:a 1, :b 2, :c #{"a" "b"}} :?}})
+            (db/upsert! :drawer (assoc m1 :id "m1"))
+            (db/upsert! :drawer (assoc m2 :id "m2"))
+            (is-> (db/get-at :drawer "m1" [m1-key2])
+                  (= "map1"))
+            (is-> (db/fetch :drawer {:only {m1-key2 :?}})
                   (u= [m1 m2])))))
       (testing "heterogeneous keys"
         (let [impl (impl-f)
-              m1 {{[:a] 1, "b" 2, #{:c 3} 3, ::d 4} "map1"}
-              m2 {{::d 4, #{3 :c} 3, [:a] 1, "b" 2} "map2"}]
+              m1-key (hash-map [:a] 1, "b" 2, #{:c 3} 3, ::d 4)
+              m1 {m1-key "map1"}
+              m1-key2 (array-map #{:c 3} 3, ::d 4, [:a] 1, "b" 2)
+              m2 {(array-map ::d 4, #{3 :c} 3, [:a] 1, "b" 2) "map2"}]
           (db/tx-> impl
-            (db/add! :drawer m1)
-            (db/add! :drawer m2)
-            (is-> (db/fetch :drawer {:only {{[:a] 1, "b" 2, #{:c 3} 3, ::d 4} :?}})
+            (db/upsert! :drawer (assoc m1 :id "m1"))
+            (db/upsert! :drawer (assoc m2 :id "m2"))
+            (is-> (db/get-at :drawer "m1" [m1-key2])
+                  (= "map1"))
+            (is-> (db/fetch :drawer {:only {m1-key2 :?}})
                   (u= [m1 m2])))))
       (testing "different map types"
         (let [impl (impl-f)
               m1 {{:a 1} "map1"}
+              m1-key2 (sorted-map :a 1)
               m2 {(sorted-map :a 1) "map2"}]
           (db/tx-> impl
-            (db/add! :drawer m1)
-            (db/add! :drawer m2)
+            (db/upsert! :drawer (assoc m1 :id "m1"))
+            (db/upsert! :drawer (assoc m2 :id "m2"))
+            (is-> (db/get-at :drawer "m1" [m1-key2])
+                  (= "map1"))
             (is-> (db/fetch :drawer {:only {{:a 1} :?}})
                   (u= [m1 m2])))))
       (testing "metadata doesn't mess equality"
@@ -285,10 +298,13 @@
     (testing "Different set types"
       (let [impl (impl-f)
             m1 {#{3 2 1} "map1"}
+            m1-key2 (sorted-set 3 2 1)
             m2 {(sorted-set 3 2 1) "map2"}]
         (db/tx-> impl
-          (db/add! :drawer m1)
-          (db/add! :drawer m2)
+          (db/upsert! :drawer (assoc m1 :id "m1"))
+          (db/upsert! :drawer (assoc m2 :id "m2"))
+          (is-> (db/get-at :drawer "m1" [m1-key2])
+                  (= "map1"))
           (is-> (db/fetch :drawer {:only {#{1 2 3} :?}})
                 (u= [m1 m2])))))))
 
