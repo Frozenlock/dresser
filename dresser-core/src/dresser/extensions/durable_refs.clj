@@ -20,15 +20,15 @@
   (->DurableRef drawer-id doc-id))
 
 (defn- ref*
-  ([dresser drawer doc-id upsert?]
-   (if doc-id
-     (db/tx-> dresser
-       (d-reg/drawer-id drawer upsert?)
-       (db/update-result
-        (fn [x]
-          (when x (durable x doc-id)))))
+  [dresser drawer doc-id upsert?]
+  (if doc-id
+    (db/tx-> dresser
+      (d-reg/drawer-id drawer upsert?)
+      (db/update-result
+       (fn [x]
+         (when x (durable x doc-id)))))
 
-     dresser)))
+    dresser))
 
 (defn ref
   "Returns a ref if it exists, nil otherwise."
