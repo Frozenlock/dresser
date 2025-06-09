@@ -5,7 +5,7 @@
             :url  "https://www.eclipse.org/legal/epl-2.0/"}
   :dependencies [[org.clojure/clojure "1.11.1"]
                  [org.clojars.frozenlock/dresser "0.2.0"]
-                 [codax "1.4.0"]
+                 [codax "1.4.3"]
 
                  ;; hashc has a messy deps tree
                  [io.replikativ/hasch "0.3.94"
