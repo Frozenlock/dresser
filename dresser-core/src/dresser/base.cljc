@@ -175,7 +175,6 @@
 
 (defmacro tx-let
   "Similar to `let`, but the first binding is wrapped inside a transaction.
-  The value returned by body MUST be a dresser.
 
   If the value on the right side is a dresser, binds left symbol to its result.
   [result (func tx ...))
