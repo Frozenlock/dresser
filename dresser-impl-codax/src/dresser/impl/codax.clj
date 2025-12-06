@@ -261,8 +261,7 @@ pathwise/side-effect
                            `dp/stop identity
                            ;; Specialized implementation for better performance
                            `dp/fetch-by-id do-fetch-by-id})))]
-    (-> (db/make-dresser impl false)
-        (db/with-temp-dresser-id))))
+    (db/make-dresser impl false)))
 
 
 

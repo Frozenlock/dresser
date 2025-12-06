@@ -340,8 +340,7 @@
                            `dp/drop        drop-drawer
                            `dp/transact    do-transact
                            `dp/tx?         (fn [this] (::in-tx? (meta this)))})))]
-    (-> (db/make-dresser impl true)
-        (db/with-temp-dresser-id))))
+    (db/make-dresser impl true)))
 
 (defn build
   "Build a hashmap-based dresser from initial data."

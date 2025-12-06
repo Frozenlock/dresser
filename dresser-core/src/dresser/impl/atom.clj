@@ -66,5 +66,4 @@
                             `dp/immutable?     (fn [_] false)
                             `dp/with-temp-data opt/with-temp-data
                             `dp/temp-data      opt/temp-data})))]
-     (-> (db/make-dresser impl false)
-         (db/with-temp-dresser-id)))))
+     (db/make-dresser impl false))))

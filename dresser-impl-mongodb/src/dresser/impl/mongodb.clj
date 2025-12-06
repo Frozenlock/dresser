@@ -630,8 +630,7 @@
                             `dp/fetch-count do-fetch-count
                             `dp/upsert-many do-upsert-many
                             `dp/rename-drawer do-rename-drawer})))]
-     (-> (db/make-dresser impl false)
-         (db/with-temp-dresser-id)))))
+     (db/make-dresser impl false))))
 
 
 

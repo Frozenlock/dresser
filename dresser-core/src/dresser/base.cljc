@@ -14,10 +14,15 @@
 
 (defn make-dresser
   [fundamental-impl immutable?]
-  (let [base-methods {`dp/-immutable? (fn [_] immutable?)}]
+  (let [base-methods {`dp/-immutable? (fn [_] immutable?)}
+        existing-temp-data (dp/temp-data fundamental-impl)
+        existing-temp-id (:temp-id existing-temp-data)
+        temp-id (or existing-temp-id (str (gensym "dresser-")))
+        new-temp-data (assoc existing-temp-data :temp-id temp-id)]
     (-> (->Dresser)
         (into fundamental-impl)
-        (with-meta (merge base-methods (meta fundamental-impl))))))
+        (with-meta (merge base-methods (meta fundamental-impl)))
+        (dp/with-temp-data new-temp-data))))
 
 (defn immutable?
   "Returns true if the dresser is immutable."
@@ -110,11 +115,6 @@
   "Temporary (in-memory) dresser ID. Doesn't require a transaction."
   [dresser]
   (temp-get-in dresser [:temp-id]))
-
-(defn with-temp-dresser-id
-  ([dresser] (with-temp-dresser-id dresser (str (gensym "dresser-"))))
-  ([dresser id]
-   (temp-assoc dresser :temp-id id)))
 
 (defn transact!
   "Evaluates the provided function inside a transaction.
@@ -243,8 +243,8 @@
                        (mapcat #(list result `(~(first %) ~tx ~result ~@(next %)))
                                (rest forms)))]
     `(tx-let [~tx ~dresser]
-         ~bindings
-       ~result)))
+             ~bindings
+             ~result)))
 
 ;; Wrap all the methods into functions. We need to intercept a few
 ;; methods anyway for varargs and some syntactic sugar.
@@ -395,8 +395,8 @@
   {:doc (str "Deletes the document if it exists. Returns id." tx-note)}
   [dresser drawer id]
   (tx-> dresser
-    (delete-many! drawer {:id id})
-    (with-result id)))
+        (delete-many! drawer {:id id})
+        (with-result id)))
 
 (defn upsert!
   "Inserts the document document in the drawer. Must have :id."
@@ -450,11 +450,11 @@
    (fetch-one dresser drawer nil))
   ([dresser drawer {:keys [only where sort]}]
    (tx-> dresser
-     (fetch drawer {:limit 1
-                    :only  only
-                    :sort  sort
-                    :where where})
-     (update-result first))))
+         (fetch drawer {:limit 1
+                        :only  only
+                        :sort  sort
+                        :where where})
+         (update-result first))))
 
 (defn fetch-reduce
   "Reduces f with the fetched documents.
@@ -575,16 +575,16 @@
   "Returns a simple hashmap (EDN) version of the dresser."
   [dresser]
   (tx-let [tx dresser]
-      [drawers (all-drawers tx)
-       _ (reduce (fn [tx' drawer-key]
-                   (let [accu (result tx')
-                         [tx' docs] (dr (fetch tx' drawer-key))
-                         m (into {} (for [d docs]
-                                      [(:id d) d]))]
-                     (with-result tx' (assoc accu drawer-key m))))
-                 (with-result tx {})
-                 drawers)]
-    tx))
+          [drawers (all-drawers tx)
+           _ (reduce (fn [tx' drawer-key]
+                       (let [accu (result tx')
+                             [tx' docs] (dr (fetch tx' drawer-key))
+                             m (into {} (for [d docs]
+                                          [(:id d) d]))]
+                         (with-result tx' (assoc accu drawer-key m))))
+                     (with-result tx {})
+                     drawers)]
+          tx))
 
 ;; LEXICAL ENCODING
 ;;
