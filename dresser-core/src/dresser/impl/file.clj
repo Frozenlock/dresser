@@ -18,7 +18,7 @@
 (defn- modified?
   "Returns true if the dresser has been modified in the current transaction."
   [dresser]
-  (db/temp-get-in dresser [::modified?]))
+  (db/temp-get dresser ::modified?))
 
 (defn- wrap-mutating-method
   "Wraps a mutating method to mark the dresser as modified."
@@ -80,23 +80,31 @@
     (deserializer (slurp filename))))
 
 (defn- save-to-file!
-  "Save data to file atomically using a temp file"
+  "Save data to file atomically using a temp file.
+  Cleans up temp file on error."
   [filename data serializer]
-  (let [temp-file (str filename ".tmp")]
-    (spit temp-file (serializer data))
-    (.renameTo (io/file temp-file) (io/file filename))))
+  (let [temp-file (str filename ".tmp")
+        temp-f (io/file temp-file)]
+    (try
+      (spit temp-file (serializer data))
+      (.renameTo temp-f (io/file filename))
+      (finally
+        (when (.exists temp-f)
+          (.delete temp-f))))))
 
 (defn- reload!
-  "Deletes every document in the dresser, then populates it back using
-  data from the file."
+  "Reloads dresser from file. Loads and verifies data before dropping
+  existing drawers to avoid data loss on load failure."
   [tx filename deserializer]
-  (db/tx-let [tx tx]
-             [_ (-> (db/all-drawers tx)
-                    (db/reduce-tx db/drop!))
-              data (load-from-file filename deserializer)
-              load-drawer! (fn [tx [drawer id->docs]]
-                             (db/upsert-many! tx drawer (vals id->docs)))]
-             (db/reduce-tx tx load-drawer! data)))
+  (let [;; Load data first, before any mutations
+        data (load-from-file filename deserializer)]
+    ;; Only proceed if we have valid data (or nil for empty file)
+    (db/tx-let [tx tx]
+               [_ (-> (db/all-drawers tx)
+                      (db/reduce-tx db/drop!))
+                load-drawer! (fn [tx [drawer id->docs]]
+                               (db/upsert-many! tx drawer (vals id->docs)))]
+               (db/reduce-tx tx load-drawer! data))))
 
 (defn wrap-transact
   [transact filename {:keys [force-reload? serializer deserializer]}]
@@ -104,10 +112,9 @@
     (let [wrap-f (fn [tx]
                    (let [tx (f tx)
                          result (db/result tx)
-                         modified? (modified? tx)
-                         tx (if modified?
-                              (let [[tx data] (db/dr (db/to-edn tx))]
-                                (save-to-file! filename data serializer)
+                         tx (if (modified? tx)
+                              (let [[tx new-data] (db/dr (db/to-edn tx))]
+                                (save-to-file! filename new-data serializer)
                                 (cond-> tx
                                   force-reload? (reload! filename deserializer)))
                               tx)]
