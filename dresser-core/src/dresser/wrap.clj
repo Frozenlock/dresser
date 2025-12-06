@@ -2,6 +2,9 @@
   (:require [dresser.base :as db]
             [dresser.protocols :as dp]))
 
+;; Dynamic var for depth tracking per [dresser-id method-sym].
+;; Closing fns are accumulated in temp-data because they must persist
+;; across binding frames (inner wrappers add fns that outer wrappers execute).
 (def ^:dynamic ^:private *stack-level* nil)
 
 (defn- wrap-closing-fn
@@ -19,23 +22,18 @@
     (wrapper-2)
     (closing-2)
     (closing-1))"
-  [method method-sym closing-fn]
-  (let [path [::closing-fns method-sym]]
+  [method method-sym closing-fn dresser-id]
+  (let [k [dresser-id method-sym]
+        path [::closing-fns k]]
     (fn [tx & args]
-      ;; Fetching/updating inside a nested map is relatively
-      ;; expensive, especially considering that `wrap-closing-fn` is
-      ;; used on all methods. Using a dynamic variable is MUCH faster.
-      (binding [*stack-level* (update *stack-level* method-sym (fnil inc 0))]
-        (let [;; add the closing-fn to the stack
-              tx (cond-> tx
+      (binding [*stack-level* (update *stack-level* k (fnil inc 0))]
+        (let [tx (cond-> tx
                    closing-fn (db/temp-update-in path #((fnil conj []) % closing-fn)))
-              ;; apply the method
               tx (apply method tx args)
-              ;; retrieve the closing-fns stack
-              cfs (when (= 1 (get *stack-level* method-sym)) ; back to the first outer layer
+              cfs (when (= 1 (get *stack-level* k))
                     (db/temp-get-in tx path))]
-          (if (not-empty cfs)
-            (let [tx (db/temp-update tx ::closing-fns dissoc method-sym)]
+          (if (seq cfs)
+            (let [tx (db/temp-update-in tx [::closing-fns] dissoc k)]
               (reduce (fn [tx' cf] (apply cf tx' args)) tx cfs))
             tx))))))
 
@@ -67,12 +65,12 @@
     (closing-1))"
   [dresser method->wrap]
   (assert (db/dresser? dresser))
-  (let [wrapper-id (gensym "wrapper-")]
+  (let [dresser-id (db/temp-dresser-id dresser)]
     (vary-meta dresser
                (fn [m]
                  (reduce (fn [m [sym {:keys [wrap closing]}]]
                            (update m sym
                                    #(-> ((or wrap identity) (or % (dp/fundamental sym)))
-                                        (wrap-closing-fn sym closing))))
+                                        (wrap-closing-fn sym closing dresser-id))))
                          m
                          method->wrap)))))
