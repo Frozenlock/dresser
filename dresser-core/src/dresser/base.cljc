@@ -399,8 +399,10 @@
         (with-result id)))
 
 (defn upsert!
-  "Inserts the document document in the drawer. Must have :id."
+  "Inserts the document in the drawer. Must have :id."
   [dresser drawer data]
+  (when-not (:id data)
+    (throw (ex-info "Missing document ID" {:doc data})))
   (assoc-at! dresser drawer (:id data) [] data))
 
 (defn upsert-many!

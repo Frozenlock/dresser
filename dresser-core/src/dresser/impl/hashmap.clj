@@ -194,7 +194,6 @@
 (defn take-or-all
   "Exactly like `clojure.core/take`, but returns coll if n is nil."
   [n coll]
-  coll
   (if n
     (take n coll)
     coll))
@@ -319,7 +318,6 @@
     (some-> (get-in dresser [drawer id])
             (where? where)
             (take-from only))))
-
 
 (defn- base-impl-build
   "Hashamp implementation without overriding the optional methods"
