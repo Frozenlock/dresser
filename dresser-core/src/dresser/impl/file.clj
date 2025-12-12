@@ -84,10 +84,14 @@
   Cleans up temp file on error."
   [filename data serializer]
   (let [temp-file (str filename ".tmp")
-        temp-f (io/file temp-file)]
+        temp-f (io/file temp-file)
+        target-f (io/file filename)]
     (try
       (spit temp-file (serializer data))
-      (.renameTo temp-f (io/file filename))
+      (when-not (.renameTo temp-f target-f)
+        (throw (ex-info "Failed to rename temp file to target"
+                        {:temp-file temp-file
+                         :target-file filename})))
       (finally
         (when (.exists temp-f)
           (.delete temp-f))))))
