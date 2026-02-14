@@ -8,7 +8,6 @@
             [dresser.encoding :as enc]
             [dresser.impl.optional :as opt]
             [dresser.protocols :as dp]
-            [hasch.core :as hashc]
             [mongo-driver-3.client :as mcl]
             [mongo-driver-3.collection :as mc])
   (:import (org.bson.types Binary ObjectId)))
@@ -146,10 +145,13 @@
       (decode-fn encoded-coll)
       encoded-coll)))
 
-(defn- hash-compare
+(defn- str-compare
+  "Deterministic comparator for heterogeneous types.
+  Uses pr-str which is consistent across JVM restarts for standard
+  Clojure types. Safe here because encode-to-str already uses pr-str
+  for the final serialization."
   [a b]
-  (compare (hashc/b64-hash a)
-           (hashc/b64-hash b)))
+  (compare (pr-str a) (pr-str b)))
 
 (defn- ordered-commutative-coll
   "For collections where order doesn't matter for equality, returns a
@@ -157,8 +159,8 @@
   [coll]
   (let [f (fn [x]
             (cond
-              (map? x) (into (sorted-map-by hash-compare) x)
-              (set? x) (into (sorted-set-by hash-compare) x)
+              (map? x) (into (sorted-map-by str-compare) x)
+              (set? x) (into (sorted-set-by str-compare) x)
               :else x))]
     (w/postwalk f coll)))
 
