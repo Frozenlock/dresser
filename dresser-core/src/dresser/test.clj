@@ -306,7 +306,30 @@
                  (is-> (db/get-at :drawer "m1" [m1-key2])
                        (= "map1"))
                  (is-> (db/fetch :drawer {:only {#{1 2 3} :?}})
-                       (u= [m1 m2])))))))
+                       (u= [m1 m2])))))
+
+    (testing "Where with map keys"
+      (let [impl (impl-f)
+            m-key {:a 1 :b 2}
+            m1 {:id "m1" m-key "match"}
+            m2 {:id "m2" m-key "other"}
+            m3 {:id "m3" :regular "field"}]
+        (db/tx-> impl
+                 (db/upsert-many! :drawer [m1 m2 m3])
+                 (is-> (db/fetch :drawer {:where {m-key "match"}})
+                       (u= [m1]))
+                 (is-> (db/fetch :drawer {:where {m-key {db/exists? true}}})
+                       (u= [m1 m2])))))
+
+    (testing "Where with set keys"
+      (let [impl (impl-f)
+            s-key #{:x :y}
+            m1 {:id "m1" s-key "found"}
+            m2 {:id "m2" :normal "field"}]
+        (db/tx-> impl
+                 (db/upsert-many! :drawer [m1 m2])
+                 (is-> (db/fetch :drawer {:where {s-key "found"}})
+                       (u= [m1])))))))
 
 (defn test--upsert
   [impl-f]
@@ -727,7 +750,27 @@
                  [id (db/add! tx :drawer1 {:data data})
                   ret (db/fetch-by-id tx :drawer1 id)]
                  (is (= data (:data ret)))
-                 tx))))
+                 tx)))
+
+  (testing "Sorted collections as values"
+    (let [sm (sorted-map :b 2 :a 1 :c 3)
+          ss (sorted-set 3 1 2)]
+      (db/tx-> (impl-f)
+               (db/add! :drawer {:id "sorted" :smap sm :sset ss})
+               (is-> (db/fetch-by-id :drawer "sorted")
+                     (fn [result]
+                       (and (= sm (:smap result))
+                            (= ss (:sset result))))
+                     "Sorted collections round-trip with equal content"))))
+
+  (testing "Sets containing sets"
+    (let [nested-set #{#{1 2} #{3 4} #{}}]
+      (db/tx-> (impl-f)
+               (db/add! :drawer {:id "nested-sets" :sets nested-set})
+               (is-> (db/fetch-by-id :drawer "nested-sets")
+                     (fn [result]
+                       (= nested-set (:sets result)))
+                     "Sets containing sets round-trip correctly")))))
 
 (defn test--dont-blow-up-stack
   [impl-f]
