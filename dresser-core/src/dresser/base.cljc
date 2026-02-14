@@ -10,7 +10,7 @@
 (defn dresser?
   "Returns true if x is a dresser."
   [x]
-  (= (type x) Dresser))
+  (instance? Dresser x))
 
 (defn make-dresser
   [fundamental-impl immutable?]

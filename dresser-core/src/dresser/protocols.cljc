@@ -73,11 +73,11 @@
   (-start [this] this)
   (-stop [this] this))
 
-(defmacro defext
-  "Defines an extension function that can be wrapped by middleware.
+(defmacro defmethod-fn
+  "Defines a metadata-dispatched function for a protocol method.
 
   Usage:
-    (defext add -add [tx drawer data])
+    (defmethod-fn add -add [tx drawer data])
 
   Creates a function that checks metadata for a wrapped version,
   falling back to the specified protocol method resolved at call time."
@@ -125,32 +125,32 @@ method."
 ;; Extension functions for all wrappable methods
 
 ;; DresserFundamental extensions
-(defext fetch -fetch [tx drawer only limit where sort skip])
-(defext all-drawers -all-drawers [tx])
-(defext delete-many -delete-many [tx drawer where])
-(defext assoc-at -assoc-at [tx drawer id ks data])
-(defext drop -drop [tx drawer])
-(defext transact -transact [dresser f opts])
-(defext immutable? -immutable? [dresser])
-(defext tx? -tx? [dresser])
+(defmethod-fn fetch -fetch [tx drawer only limit where sort skip])
+(defmethod-fn all-drawers -all-drawers [tx])
+(defmethod-fn delete-many -delete-many [tx drawer where])
+(defmethod-fn assoc-at -assoc-at [tx drawer id ks data])
+(defmethod-fn drop -drop [tx drawer])
+(defmethod-fn transact -transact [dresser f opts])
+(defmethod-fn immutable? -immutable? [dresser])
+(defmethod-fn tx? -tx? [dresser])
 
 ;; DresserOptional extensions
-(defext fetch-by-id -fetch-by-id [tx drawer id only where])
-(defext fetch-count -fetch-count [tx drawer where])
-(defext update-at -update-at [tx drawer id ks f args])
-(defext add -add [tx drawer data])
-(defext all-ids -all-ids [tx drawer])
-(defext dissoc-at -dissoc-at [tx drawer id ks dissoc-ks])
-(defext gen-id -gen-id [tx drawer])
-(defext get-at -get-at [tx drawer id ks only])
-(defext upsert-many -upsert-many [tx drawer docs])
-(defext dresser-id -dresser-id [tx])
-(defext drawer-key -drawer-key [tx drawer-id])
-(defext rename-drawer -rename-drawer [tx drawer new-drawer])
-(defext has-drawer? -has-drawer? [tx drawer])
-(defext temp-data -temp-data [dresser])
-(defext with-temp-data -with-temp-data [dresser data])
+(defmethod-fn fetch-by-id -fetch-by-id [tx drawer id only where])
+(defmethod-fn fetch-count -fetch-count [tx drawer where])
+(defmethod-fn update-at -update-at [tx drawer id ks f args])
+(defmethod-fn add -add [tx drawer data])
+(defmethod-fn all-ids -all-ids [tx drawer])
+(defmethod-fn dissoc-at -dissoc-at [tx drawer id ks dissoc-ks])
+(defmethod-fn gen-id -gen-id [tx drawer])
+(defmethod-fn get-at -get-at [tx drawer id ks only])
+(defmethod-fn upsert-many -upsert-many [tx drawer docs])
+(defmethod-fn dresser-id -dresser-id [tx])
+(defmethod-fn drawer-key -drawer-key [tx drawer-id])
+(defmethod-fn rename-drawer -rename-drawer [tx drawer new-drawer])
+(defmethod-fn has-drawer? -has-drawer? [tx drawer])
+(defmethod-fn temp-data -temp-data [dresser])
+(defmethod-fn with-temp-data -with-temp-data [dresser data])
 
 ;; DresserLifecycle extensions
-(defext start -start [dresser])
-(defext stop -stop [dresser])
+(defmethod-fn start -start [dresser])
+(defmethod-fn stop -stop [dresser])
