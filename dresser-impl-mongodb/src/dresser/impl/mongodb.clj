@@ -35,7 +35,6 @@
     (str n "/" (name x))
     (name x)))
 
-
 (def ^:private query-ops
   {::db/exists? :$exists
    ::db/gt      :$gt
@@ -46,7 +45,6 @@
 (defn- replace-query-ops
   [m]
   (w/postwalk-replace query-ops m))
-
 
 (defn- flatten-keys* [acc ks m]
   (if (and (map? m)
@@ -69,7 +67,6 @@
   (if (empty? m)
     m
     (flatten-keys* {} [] m)))
-
 
 (defn- extract-ors
   "Extracts $or conditions from the query.
@@ -123,7 +120,6 @@
       normal-query
       (merge normal-query (or-function extracted-ors)))))
 
-
 ;; Pretty shitty encode/decode. I'm open to suggestions.
 
 (declare encode)
@@ -150,8 +146,6 @@
       (decode-fn encoded-coll)
       encoded-coll)))
 
-
-
 (defn- hash-compare
   [a b]
   (compare (hashc/b64-hash a)
@@ -168,7 +162,6 @@
               :else x))]
     (w/postwalk f coll)))
 
-
 (defn- encode-to-str
   [x]
   (cond
@@ -178,7 +171,6 @@
                    (encode x))
     :else (str "_drs:edn:"
                (escape (pr-str (ordered-commutative-coll (enc/encode-record x)))))))
-
 
 (defn- encode
   [x]
@@ -209,9 +201,6 @@
                   (unescape x))
     (instance? org.bson.types.Binary x) (.getData x)
     :else x))
-
-
-
 
 (defn- id->mid
   "Updates the map by converting Dresser :id into MongoDB \"_id\"."
@@ -250,7 +239,6 @@
   [drawer]
   (encode drawer))
 
-
 ;;; This is infuriating.
 ;;; In transactions (or multi-docs transactions), MongoDB doesn't support:
 ;;; - Drop
@@ -267,7 +255,6 @@
 ;;; Anyway, to fix all those unsupported transaction operations we
 ;;; have to keep our own registry of drawers. It will add some
 ;;; overhead, but with some caching it should be negligible.
-
 
 ;;; --- Drawers registry ---
 (def drawers-registry "drs_drawers_registry")
@@ -398,8 +385,7 @@
   The dotted notation is necessary for partial subdocument matches."
   [coll]
   (->> (map #(if (string? %) (escape %) (encode %)) coll)
-       (str/join "." )))
-
+       (str/join ".")))
 
 (defn- simple-prepare-where
   [where]
@@ -427,7 +413,6 @@
   [where]
   (-> (expand-ors where)
       (prepare-where*)))
-
 
 (defn- prepare-only
   [only]
@@ -508,8 +493,6 @@
   (-> dresser
       (update :post-tx-fns conj #(drop-expired-collections! db))
       (db/with-result drawer)))
-
-
 
 (defn do-delete-many
   [{:keys [db session *cache] :as tx} drawer where]
@@ -592,9 +575,8 @@
           ;; (let [dresser (f (assoc dresser :transact true))
           ;;       non-lazy (db/update-result dresser #(if (seq? %) (doall %) %))]
           ;;   non-lazy)
-
           ]
-      ;; Post-transaction operations.  This can't throw an exception
+;; Post-transaction operations.  This can't throw an exception
       ;; as the mongoDB transaction is completed, but we might still
       ;; be inside other transactions that MUST complete to stay in
       ;; sync.
@@ -603,9 +585,7 @@
            (catch Exception _))
       (dissoc dresser' :transact :post-tx-fns))))
 
-
 ;; MongoDB implementation methods provided via metadata
-
 
 (defn build
   ([db-configs] (build {} db-configs))
@@ -626,22 +606,22 @@
                             `dp/drop do-drop
                             `dp/transact do-transact
                             `dp/tx? #(boolean (:transact %))
+                            `dp/start identity
+                            `dp/stop (fn [dresser]
+                                       (.close (:client dresser))
+                                       dresser)
                             ;; Specialized implementations for better performance
                             `dp/fetch-count do-fetch-count
                             `dp/upsert-many do-upsert-many
                             `dp/rename-drawer do-rename-drawer})))]
      (db/make-dresser impl false))))
 
-
-
-
 (comment
   (def aaa (build {:db-name "dresser_test_db"
                    :host    "127.0.0.1"
                    :port    27018}))
   (do (.drop (:db aaa))
-      (.close (:client aaa))
-      ))
+      (.close (:client aaa))))
 
 (comment
   (require '[dresser.extensions.cache :as cache])
