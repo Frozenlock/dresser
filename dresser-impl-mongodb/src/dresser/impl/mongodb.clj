@@ -35,15 +35,27 @@
     (name x)))
 
 (def ^:private query-ops
-  {::db/exists? :$exists
-   ::db/gt      :$gt
-   ::db/gte     :$gte
-   ::db/lt      :$lt
-   ::db/lte     :$lte})
+  {::db/exists?      :$exists
+   ::db/gt           :$gt
+   ::db/gte          :$gte
+   ::db/lt           :$lt
+   ::db/lte          :$lte
+   ::db/str-includes :$regex})
+
+(defn- escape-regex
+  "Escapes PCRE special characters for use in MongoDB $regex."
+  [s]
+  (str/replace s #"[.*+?^${}()|\[\]\\]" "\\\\$0"))
 
 (defn- replace-query-ops
   [m]
-  (w/postwalk-replace query-ops m))
+  (w/postwalk (fn [x]
+                (if (and (map-entry? x) (= (key x) ::db/str-includes))
+                  (clojure.lang.MapEntry/create :$regex (escape-regex (val x)))
+                  (if-let [replacement (get query-ops x)]
+                    replacement
+                    x)))
+              m))
 
 (defn- flatten-keys* [acc ks m]
   (if (and (map? m)

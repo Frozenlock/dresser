@@ -423,11 +423,12 @@
 (def gte ::gte)
 (def exists? ::exists?)
 (def any ::any)
+(def str-includes ::str-includes)
 
 (defn ops?
   "True if key is a query operation"
   [k]
-  (boolean (some #{k} [exists? gte gt lte lt])))
+  (boolean (some #{k} [exists? gte gt lte lt str-includes])))
 
 (defn unsupported-ops-err
   [op form]

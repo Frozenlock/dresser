@@ -365,10 +365,10 @@
   [impl-f]
   (testing "Fetch"
     (let [;; Introduce randomness in docs order with :r
-          [d1 d2 d3 d4] [{:id 1, :sort {:a 1, :b 1}, :1 1, :r (rand), :type 1},
-                         {:id 2, :sort {:a 1, :b 2}, :1 1, :2 2, :r (rand), :type "a"},
+          [d1 d2 d3 d4] [{:id 1, :sort {:a 1, :b 1}, :1 1, :r (rand), :type 1, :s "hello world"},
+                         {:id 2, :sort {:a 1, :b 2}, :1 1, :2 2, :r (rand), :type "a", :s "hello"},
                          {:id 3,                  :sort {:a 2, :b 2}, :1    1, :2 2, :3 3,
-                          :c  {:d :nested, :n 4}, :r    (rand),       :type #{1}}
+                          :c  {:d :nested, :n 4}, :r    (rand),       :type #{1}, :s "world"}
                          {:id 4, :sort {:a 3} :r (rand)}]
           docs [d1 d2 d3 d4]]
       (db/tx-> (impl-f)
@@ -437,7 +437,25 @@
                                                                                         db/any [{:sort {:a {db/any [{db/lt 3
                                                                                                                      db/gt 1}
                                                                                                                     3]}}}]}})
-                                                                            (u= [d3])))))))
+                                                                            (u= [d3])))))
+
+                                     (testing-> " - str-includes"
+                                                (is-> (db/fetch :drawer1 {:where {:s {db/str-includes "hello"}}}) (u= [d1 d2]))
+                                                (is-> (db/fetch :drawer1 {:where {:s {db/str-includes "world"}}}) (u= [d1 d3]))
+                                                (is-> (db/fetch :drawer1 {:where {:s {db/str-includes "xyz"}}}) (u= []))
+                                                (is-> (db/fetch :drawer1 {:where {:s {db/str-includes "lo wo"}}}) (u= [d1])
+                                                      "Matches substring spanning words")
+                                                ;; Regex special chars are treated as literals
+                                                (db/add! :str-test {:s "price is $100.00 (USD)"})
+                                                (db/add! :str-test {:s "no match here"})
+                                                (is-> (db/fetch :str-test {:where {:s {db/str-includes "$100.00"}}})
+                                                      (comp (partial some #(= (:s %) "price is $100.00 (USD)")) seq)
+                                                      "Matches literal $ and .")
+                                                (is-> (db/fetch :str-test {:where {:s {db/str-includes "(USD)"}}})
+                                                      (comp (partial some #(= (:s %) "price is $100.00 (USD)")) seq)
+                                                      "Matches literal parens")
+                                                (is-> (db/fetch :str-test {:where {:s {db/str-includes ".*"}}}) (u= [])
+                                                      ".* is not a regex wildcard"))))
 
                (testing-> "- Only"
                           (is-> (db/fetch :drawer1 {:only {:id :?}}) (u= (for [{:keys [id]} docs]

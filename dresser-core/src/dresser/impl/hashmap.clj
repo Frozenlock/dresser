@@ -1,5 +1,6 @@
 (ns dresser.impl.hashmap
-  (:require [clojure.test :as t :refer [is]]
+  (:require [clojure.string :as str]
+            [clojure.test :as t :refer [is]]
             [dresser.base :as db]
             [dresser.impl.optional :as opt]
             [dresser.protocols :as dp]
@@ -123,14 +124,20 @@
   [data-entry field-key test-val]
   (some #(where? data-entry {field-key %}) test-val))
 
+(defn- str-includes
+  [data-entry field-key test-val]
+  (let [value (get data-entry field-key)]
+    (and (string? value) (str/includes? value test-val))))
+
 (def query-ops
   {;; :=       = ; implied
-   ::db/exists? exists?
-   ::db/gt      gt
-   ::db/gte     gte
-   ::db/lt      lt
-   ::db/lte     lte
-   ::db/any     any})
+   ::db/exists?      exists?
+   ::db/gt           gt
+   ::db/gte          gte
+   ::db/lt           lt
+   ::db/lte          lte
+   ::db/any          any
+   ::db/str-includes str-includes})
 
 (defn where?
   "Returns `data` if all the conditions are met, nil otherwise."
