@@ -455,7 +455,14 @@
                                                       (comp (partial some #(= (:s %) "price is $100.00 (USD)")) seq)
                                                       "Matches literal parens")
                                                 (is-> (db/fetch :str-test {:where {:s {db/str-includes ".*"}}}) (u= [])
-                                                      ".* is not a regex wildcard"))))
+                                                      ".* is not a regex wildcard"))
+
+                                     (testing-> " - str-includes-ci"
+                                                (is-> (db/fetch :drawer1 {:where {:s {db/str-includes-ci "HELLO"}}}) (u= [d1 d2]))
+                                                (is-> (db/fetch :drawer1 {:where {:s {db/str-includes-ci "WORLD"}}}) (u= [d1 d3]))
+                                                (is-> (db/fetch :drawer1 {:where {:s {db/str-includes-ci "Hello World"}}}) (u= [d1])
+                                                      "Case insensitive full match")
+                                                (is-> (db/fetch :drawer1 {:where {:s {db/str-includes-ci "XYZ"}}}) (u= [])))))
 
                (testing-> "- Only"
                           (is-> (db/fetch :drawer1 {:only {:id :?}}) (u= (for [{:keys [id]} docs]

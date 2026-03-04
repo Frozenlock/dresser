@@ -34,13 +34,19 @@
     (str n "/" (name x))
     (name x)))
 
+(def ^:private simple-query-ops
+  {::db/exists? :$exists
+   ::db/gt      :$gt
+   ::db/gte     :$gte
+   ::db/lt      :$lt
+   ::db/lte     :$lte})
+
+;; Used by flatten-keys* to detect op maps and stop flattening.
+;; String ops map to themselves since they're handled separately.
 (def ^:private query-ops
-  {::db/exists?      :$exists
-   ::db/gt           :$gt
-   ::db/gte          :$gte
-   ::db/lt           :$lt
-   ::db/lte          :$lte
-   ::db/str-includes :$regex})
+  (merge simple-query-ops
+         {::db/str-includes    ::db/str-includes
+          ::db/str-includes-ci ::db/str-includes-ci}))
 
 (defn- escape-regex
   "Escapes PCRE special characters for use in MongoDB $regex."
@@ -50,11 +56,22 @@
 (defn- replace-query-ops
   [m]
   (w/postwalk (fn [x]
-                (if (and (map-entry? x) (= (key x) ::db/str-includes))
-                  (clojure.lang.MapEntry/create :$regex (escape-regex (val x)))
-                  (if-let [replacement (get query-ops x)]
-                    replacement
-                    x)))
+                (cond
+                  (and (map? x) (not (map-entry? x)))
+                  (cond
+                    (contains? x ::db/str-includes)
+                    {:$regex (escape-regex (::db/str-includes x))}
+
+                    (contains? x ::db/str-includes-ci)
+                    {:$regex   (escape-regex (::db/str-includes-ci x))
+                     :$options "i"}
+
+                    :else x)
+
+                  (get simple-query-ops x)
+                  (get simple-query-ops x)
+
+                  :else x))
               m))
 
 (defn- flatten-keys* [acc ks m]

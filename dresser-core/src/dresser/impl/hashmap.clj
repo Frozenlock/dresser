@@ -129,15 +129,22 @@
   (let [value (get data-entry field-key)]
     (and (string? value) (str/includes? value test-val))))
 
+(defn- str-includes-ci
+  [data-entry field-key test-val]
+  (let [value (get data-entry field-key)]
+    (and (string? value)
+         (str/includes? (str/lower-case value) (str/lower-case test-val)))))
+
 (def query-ops
   {;; :=       = ; implied
-   ::db/exists?      exists?
-   ::db/gt           gt
-   ::db/gte          gte
-   ::db/lt           lt
-   ::db/lte          lte
-   ::db/any          any
-   ::db/str-includes str-includes})
+   ::db/exists?         exists?
+   ::db/gt              gt
+   ::db/gte             gte
+   ::db/lt              lt
+   ::db/lte             lte
+   ::db/any             any
+   ::db/str-includes    str-includes
+   ::db/str-includes-ci str-includes-ci})
 
 (defn where?
   "Returns `data` if all the conditions are met, nil otherwise."
