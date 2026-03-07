@@ -5,7 +5,6 @@
             [clojure.string :as str]
             [clojure.walk :as w]
             [dresser.base :as db]
-            [dresser.encoding :as enc]
             [dresser.impl.optional :as opt]
             [dresser.protocols :as dp]
             [mongo-driver-3.client :as mcl]
@@ -201,7 +200,7 @@
                    x
                    (encode x))
     :else (str "_drs:edn:"
-               (escape (pr-str (ordered-commutative-coll (enc/encode-record x)))))))
+               (escape (pr-str (ordered-commutative-coll x))))))
 
 (defn- encode
   [x]
@@ -211,7 +210,7 @@
                           ;; as keys. Serialize if necessary.
                           (assoc acc (encode-to-str k) (encode v)))
                         {}
-                        (enc/encode-record x))
+                        x)
     (and (coll? x)
          (not (db/ops? x))) (encode-coll x)
     (keyword? x) (str "_drs:kw:" (escape (qualified-ident-name x)))
@@ -222,12 +221,11 @@
   (cond
     (map? x) (-> (reduce-kv (fn [acc k v]
                               (assoc acc (decode k) (decode v)))
-                            {} x)
-                 (enc/restore-record))
+                            {} x))
     (coll? x) (decode-coll x)
     (string? x) (if-let [[a _drs xtype data] (re-matches #"^(_drs:)(.*?):(.*)" x)]
                   (case xtype
-                    "edn" (-> (unescape data) edn/read-string enc/restore-record)
+                    "edn" (-> (unescape data) edn/read-string)
                     "kw" (keyword (unescape data)))
                   (unescape x))
     (instance? org.bson.types.Binary x) (.getData x)

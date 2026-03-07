@@ -56,22 +56,14 @@
       (dp/wrap-method `dp/transact wrap-transact-for-tracking)))
 
 (defn encode-all
-  "Encode both records and byte arrays in data structure"
+  "Encode byte arrays in data structure"
   [data]
-  (walk/postwalk (fn [x]
-                   (-> x
-                       enc/encode-record
-                       enc/encode-bytes))
-                 data))
+  (walk/postwalk enc/encode-bytes data))
 
 (defn decode-all
-  "Decode both records and byte arrays in data structure"
+  "Decode byte arrays in data structure"
   [data]
-  (walk/postwalk (fn [x]
-                   (-> x
-                       enc/restore-record
-                       enc/restore-bytes))
-                 data))
+  (walk/postwalk enc/restore-bytes data))
 
 (defn- load-from-file
   "Load data from file if it exists, nil otherwise"

@@ -1,9 +1,7 @@
 (ns dresser.impl.codax
   (:require [clojure.string :as str]
-            [clojure.walk :as walk]
             [codax.core :as c]
             [dresser.base :as db]
-            [dresser.encoding :as enc]
             [dresser.impl.hashmap :as hm]
             [dresser.impl.optional :as opt]
             [dresser.impl.pathwise :as pathwise]
@@ -12,33 +10,19 @@
 
 pathwise/side-effect
 
-
 ;;; There are 2 different transaction types that need to be handled in
 ;;; this ns: the dresser transaction (tx) and the codax transaction
 ;;; (codax).
 
-(defn- encode-records
-  "Walk the data structure and encode all records"
-  [data]
-  (walk/postwalk enc/encode-record data))
-
-(defn- decode-records
-  "Walk the data structure and decode all records"
-  [data]
-  (walk/postwalk enc/restore-record data))
-
-
 ;; Listing all keys requires loading everything if we don't keep our
 ;; own registry. https://github.com/dscarpetti/codax/issues/24
 (def codax-drawers :drs_codax_drawers)
-
 
 (defn not-lazy
   [x]
   (if (seq? x)
     (doall x)
     x))
-
 
 (defn do-transact
   [dresser f opts]
@@ -70,7 +54,6 @@ pathwise/side-effect
     (let [dresser @*ret]
       (assoc dresser :codax false))))
 
-
 (defn do-all-drawers
   [tx]
   ; When reading from a codax, we don't need to return an 'updated' codax.
@@ -83,8 +66,8 @@ pathwise/side-effect
     (db/fetch-reduce tx drawer
                      (fn [tx doc]
                        (-> (update tx :codax c/dissoc-at [drawer (:id doc)])
-                                     (db/update-result update :deleted-count inc)))
-                     {:where (encode-records where)
+                           (db/update-result update :deleted-count inc)))
+                     {:where where
                       :only  {:id :?}})))
 
 (defn do-drop
@@ -94,7 +77,6 @@ pathwise/side-effect
         codax (c/dissoc-at codax [codax-drawers drawer])]
     (-> (assoc tx :codax codax)
         (db/with-result drawer))))
-
 
 (defn- lazy-fetch
   [codax path start-key end-key chunk-size remove-first? reverse?]
@@ -139,7 +121,6 @@ pathwise/side-effect
                    (min max-chunk-size (* 2 chunk-size))
                    true reverse?))
       data)))
-
 
 (defn- fetch* ;; EVERY ARGUMENT SHOULD ALREADY BE ENCODED
   [codax drawer only limit where sort-config]
@@ -189,41 +170,29 @@ pathwise/side-effect
   [tx drawer only limit where sort-config skip]
   (if (nil? (get where :id :not-found))
     (db/with-result tx '())
-    (let [where (encode-records where)
-          only (encode-records only)
-          other-where (dissoc where :id)
+    (let [other-where (dissoc where :id)
           sort-only-id? (and (= :id (first (ffirst sort-config)))
                              (= 1 (count sort-config)))
           all-docs (fetch* (:codax tx) drawer only limit where sort-config)]
       (->> (hm/fetch-from-docs all-docs only limit other-where (if sort-only-id? nil sort-config) skip)
-           (map decode-records)
            (doall)
            (db/with-result tx)))))
 
-
-
-
-
-
-
 (defn do-fetch-by-id
   [tx drawer id only where]
-  (let [codax (:codax tx)
-        where (encode-records where)
-        only (encode-records only)]
+  (let [codax (:codax tx)]
     (db/with-result tx
       (when-let [doc (c/get-at codax [drawer id])]
         (when (hm/where? doc where)
-          (let [filtered (hm/take-from doc only)]
-            (decode-records filtered)))))))
+          (hm/take-from doc only))))))
 
 (defn do-assoc-at
   [tx drawer id ks data]
   (let [drawer-key drawer
         codax (:codax tx)
-        ?path (some-> ks seq encode-records)
+        ?path (some-> ks seq)
         ;; At root? Ensure we have an ID
-        prepared-data (encode-records (if ?path data (assoc data :id id)))
+        prepared-data (if ?path data (assoc data :id id))
         codax (c/assoc-at codax (into [drawer-key id] ?path) prepared-data)
         ;; Might be creating a new document, ensure we have an ID
         codax (if (not (c/get-at codax [drawer-key id :id]))
@@ -231,8 +200,8 @@ pathwise/side-effect
                 codax)
         drawer-registered? (c/get-at codax [codax-drawers drawer-key])
         codax (if-not drawer-registered?
-               (c/assoc-at codax [codax-drawers drawer-key] true)
-               codax)]
+                (c/assoc-at codax [codax-drawers drawer-key] true)
+                codax)]
     (-> (assoc tx :codax codax)
         (db/with-result data))))
 
@@ -263,33 +232,13 @@ pathwise/side-effect
                            `dp/fetch-by-id do-fetch-by-id})))]
     (db/make-dresser impl false)))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-
-
 
 (comment
   (require '[dresser.extensions.ttl :as ttl])
   (def aaa (-> (build "test-db")
                (ttl/ttl (ttl/secs 10))
-               (db/start)
-               ))
+               (db/start)))
   (time (let [add-rnd-user! (fn [aaa idx]
                               (let [username (str (gensym "user-"))
                                     email (str username "@" (gensym "email") ".com")]

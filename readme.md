@@ -27,20 +27,18 @@ Suggestions welcome!
 Store and query your Clojure data structures directly - no ORMs, no normalization, no SQL:
 
 ```clojure
-;; Your data - even with records!
-(defrecord Settings [theme language notifications])
-
 (def user {:name "Alice"
-           :settings (->Settings "dark" "en" {:email true :push false})
+           :settings {:theme "dark" :language "en"
+                      :notifications {:email true :push false}}
            :usage {:widgets 50
                    :bandwidth 100}})
 
 ;; Just store it - returns the ID
 (def user-id (db/add! DB :users user))
 
-;; Query nested fields directly - records are preserved!
+;; Query nested fields directly
 (db/fetch DB :users {:where {:settings {:theme "dark"}}})
-;=> ({:name "Alice" :settings #Settings{...} ...})
+;=> ({:name "Alice" :settings {...} ...})
 
 ;; Update deeply nested values in a transaction
 (db/tx-> DB
@@ -53,7 +51,7 @@ Store and query your Clojure data structures directly - no ORMs, no normalizatio
 **Plus:**
 - Develop with in-memory storage, deploy with persistent implementations - zero code changes
 - Test at full speed without database setup or mocks
-- Use vectors `[user-id timestamp]`, maps `{:year 2024 :month 3}`, even records as keys
+- Use vectors `[user-id timestamp]`, maps `{:year 2024 :month 3}` as keys
 - Every function works identically across all implementations
 
 
