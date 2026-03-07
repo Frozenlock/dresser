@@ -168,7 +168,7 @@
                   ret))
             *result (promise)]
         (.put queue {:tx-fn        (fn [tx]
-                              (execute-transaction-step tx f tx-id *result *tx queue))
+                                     (execute-transaction-step tx f tx-id *result *tx queue))
                      :init-dresser dresser
                      :step         step})
         (let [new-tx (deref *result timeout-ms {::err (ex-info "Result timeout" {:tx-id tx-id})})]
@@ -229,7 +229,7 @@
                 end-tx (fn [dresser opts]
                          (cond
                            (not (:initialized? @*tx-state))
-                           (throw (ex-info "Can't end unstarted transaction" {}))
+                           dresser ;; No-op, consistent with cancel-tx behavior
 
                            ;; (nested-tx? tx-id)
                            ;; (throw (ex-info "End-tx cannot occur from within a transaction" {}))
