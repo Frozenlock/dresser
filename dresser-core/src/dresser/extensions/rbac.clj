@@ -122,23 +122,6 @@
     (refs/assoc-at! dresser grp-ref [:drs_rbac :guest-roles]
                     (mbr/roles-map roles))))
 
-(defn- members-with-permission
-  "Returns a collection of member refs, or, if the permission is matched
-  with a `guest-role` stored in the grp document, returns [::guest]. "
-  [dresser grp-ref request-map]
-  (db/tx-let [tx dresser]
-      [{:keys [drs_rbac]} (refs/fetch-by-ref tx grp-ref
-                                             {:only
-                                              {:drs_rbac [:guest-roles
-                                                          :role->perms]}})
-       {:keys [guest-roles role->perms]} drs_rbac
-       roles-w-perm (for [[role permissions] (merge default-roles role->perms)
-                          :when (permitted? [permissions] request-map)]
-                      role)]
-    (if (some (or guest-roles {}) roles-w-perm)
-      (db/with-result tx [::guest])
-      (mbr/members-of-group-with-roles tx grp-ref roles-w-perm))))
-
 (defn- with-cache
   "Caches the result of f in temp-data under cache-key.
   If cache-key is nil, simply call (f tx)."
@@ -151,6 +134,27 @@
         (-> tx
             (db/temp-assoc cache-key result)
             (db/with-result result))))))
+
+(defn- members-with-permission
+  "Returns a collection of member refs, or, if the permission is matched
+  with a `guest-role` stored in the grp document, returns [::guest].
+  Results are cached per [grp-ref request-map] when a cache-key is provided."
+  [dresser grp-ref request-map cache-key]
+  (with-cache dresser (when cache-key
+                        [cache-key [:mwp grp-ref request-map]])
+    (fn [tx]
+      (db/tx-let [tx tx]
+          [{:keys [drs_rbac]} (refs/fetch-by-ref tx grp-ref
+                                                 {:only
+                                                  {:drs_rbac [:guest-roles
+                                                              :role->perms]}})
+           {:keys [guest-roles role->perms]} drs_rbac
+           roles-w-perm (for [[role permissions] (merge default-roles role->perms)
+                              :when (permitted? [permissions] request-map)]
+                          role)]
+        (if (some (or guest-roles {}) roles-w-perm)
+          (db/with-result tx [::guest])
+          (mbr/members-of-group-with-roles tx grp-ref roles-w-perm))))))
 
 (defn permission-chain
   "Checks if member has the requested permission for the group. If not,
@@ -171,7 +175,7 @@
                          [cache-key [:pchain grp-ref request member-ref]])
      (fn [tx]
        (db/tx-let [tx dresser]
-           [valid-members (members-with-permission tx grp-ref request)]
+           [valid-members (members-with-permission tx grp-ref request cache-key)]
          (if (or (some #{member-ref ::guest} valid-members)) ; Found member?
            (db/with-result tx [member-ref])
            ;; If the member isn't found directly, recursively check the groups
