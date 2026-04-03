@@ -34,12 +34,11 @@
   ([dresser member-ref drawer]
    (db/tx-let [tx dresser]
        [drawer-ids (when drawer (d-reg/drawer-ids tx drawer))
-        rels (rel/fetch-relations dresser member-ref member-of-rel
+        rels (rel/fetch-relations tx member-ref member-of-rel
                                   {:only  {:target-ref :?}
                                    :where (when drawer-ids
-                                            {:data
-                                             {:target-ref
-                                              {:drawer-id {db/any drawer-ids}}}})})]
+                                            {:target-ref
+                                             {:drawer-id {db/any drawer-ids}}})})]
      (map :target-ref rels))))
 
 

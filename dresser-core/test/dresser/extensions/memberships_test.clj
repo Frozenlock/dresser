@@ -40,6 +40,11 @@
       (dt/is-> (mbr/members-of-group p1) (= [usr1 usr2]))
       (dt/is-> (mbr/memberships-of-member usr1) (= [p1]))
       (dt/is-> (mbr/memberships-of-member usr2) (= [p1]))
+      ;; Drawer filter
+      (dt/is-> (mbr/memberships-of-member usr1 :projects) (= [p1])
+               "Drawer filter returns only matching memberships")
+      (dt/is-> (mbr/memberships-of-member usr1 :users) empty?
+               "Drawer filter excludes memberships from other drawers")
       ;; No roles, should remove from group
       (dt/is-> (mbr/upsert-group-member! p1 usr1 []) (= p1))
       (dt/is-> (mbr/members-of-group p1) (= [usr2]))
